@@ -1,0 +1,499 @@
+'use client';
+
+import { useEffect, useState, useCallback, Fragment } from 'react';
+import * as XLSX from 'xlsx';
+import { fetchOrders, updateOrder, deleteOrder, fetchSuppliers, fetchReceptions, DailyOrder, MorningReception } from '@/lib/db';
+import { Supplier, Product } from '@/lib/types';
+
+type Prices = { frites: number | null; viande: number | null; buns: number | null };
+
+function getSupplierPrices(suppliers: Supplier[]): Prices {
+  const get = (product: Product) => {
+    const active = suppliers.filter(s => s.product === product && s.is_active);
+    return (active.find(s => s.is_primary) ?? active[0])?.price ?? null;
+  };
+  return { frites: get('frites'), viande: get('viande'), buns: get('buns') };
+}
+
+function calcCost(orders: DailyOrder[], prices: Prices): { total: number | null; breakdown: string } {
+  let total = 0; let hasAny = false; const parts: string[] = [];
+  const add = (price: number | null, qty: number, label: string) => {
+    if (price == null) return;
+    const c = price * qty; total += c; hasAny = true;
+    parts.push(`${label} ${c.toFixed(0)} €`);
+  };
+  add(prices.frites, orders.reduce((s, o) => s + o.frites_commander, 0), 'Frites');
+  add(prices.viande, orders.reduce((s, o) => s + o.viande_total, 0), 'Viande');
+  add(prices.buns, orders.reduce((s, o) => s + o.buns_commander, 0), 'Buns');
+  return { total: hasAny ? total : null, breakdown: parts.join(' · ') };
+}
+
+type EditableField = keyof Omit<DailyOrder, 'id' | 'date' | 'day_name' | 'validated_at'>;
+
+const EDITABLE_FIELDS: { key: EditableField; label: string; unit?: string }[] = [
+  { key: 'burgers_prevus', label: 'Burgers prévus' },
+  { key: 'frites_blanchir', label: 'Frites à blanchir', unit: 'kg' },
+  { key: 'frites_commander', label: 'Frites à commander', unit: 'kg' },
+  { key: 'viande_total', label: 'Viande totale', unit: 'kg' },
+  { key: 'boeuf', label: 'Bœuf', unit: 'kg' },
+  { key: 'gras', label: 'Gras', unit: 'kg' },
+  { key: 'buns_commander', label: 'Buns commandés' },
+];
+
+function groupByMonth(orders: DailyOrder[]): Record<string, DailyOrder[]> {
+  return orders.reduce((acc, o) => {
+    const key = o.date.slice(0, 7);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(o);
+    return acc;
+  }, {} as Record<string, DailyOrder[]>);
+}
+
+function monthLabel(key: string): string {
+  const [y, m] = key.split('-');
+  const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+  return `${months[parseInt(m) - 1]} ${y}`;
+}
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  const days = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
+  return `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function exportExcel(orders: DailyOrder[], label: string) {
+  const rows = orders.map((o) => ({
+    'Date': o.date,
+    'Jour': o.day_name,
+    'Burgers prévus': o.burgers_prevus,
+    'Frites blanchir (kg)': o.frites_blanchir,
+    'Frites commander (kg)': o.frites_commander,
+    'Viande total (kg)': o.viande_total,
+    'Bœuf (kg)': o.boeuf,
+    'Gras (kg)': o.gras,
+    'Buns commandés': o.buns_commander,
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [12, 12, 14, 20, 22, 17, 12, 12, 16].map(w => ({ wch: w }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Historique');
+
+  XLSX.writeFile(wb, `night-order-${label}.xlsx`);
+}
+
+function ExportModal({ orders, monthKeys, onClose }: { orders: DailyOrder[]; monthKeys: string[]; onClose: () => void }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Grouper les mois par année
+  const byYear: Record<string, string[]> = {};
+  for (const key of monthKeys) {
+    const year = key.slice(0, 4);
+    if (!byYear[year]) byYear[year] = [];
+    byYear[year].push(key);
+  }
+  const years = Object.keys(byYear).sort().reverse();
+
+  function toggleMonth(key: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  function toggleYear(year: string) {
+    const yearMonths = byYear[year];
+    const allIn = yearMonths.every(k => selected.has(k));
+    setSelected(prev => {
+      const next = new Set(prev);
+      yearMonths.forEach(k => allIn ? next.delete(k) : next.add(k));
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(prev => prev.size === monthKeys.length ? new Set() : new Set(monthKeys));
+  }
+
+  function doExport() {
+    const toExport = selected.size === 0 || selected.size === monthKeys.length
+      ? orders
+      : orders.filter(o => selected.has(o.date.slice(0, 7)));
+    const label = selected.size === 0 || selected.size === monthKeys.length
+      ? 'historique-complet'
+      : Array.from(selected).sort().join('_');
+    exportExcel(toExport, label);
+    onClose();
+  }
+
+  const allSelected = selected.size === monthKeys.length;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#596643] border border-[#6B7A50] rounded-2xl p-6 w-full max-w-sm shadow-xl">
+        <h3 className="text-white font-bold text-lg mb-1">Export Excel</h3>
+        <p className="text-[#8BA870] text-sm mb-4">Sélectionne les mois à exporter</p>
+
+        <button
+          onClick={toggleAll}
+          className={`w-full text-left px-3 py-2 rounded-xl text-sm font-bold mb-3 border transition-colors ${
+            allSelected ? 'bg-[#FF4D8A]/20 border-[#FF4D8A]/50 text-[#FF4D8A]' : 'border-[#6B7A50] text-[#C8D4B0] hover:bg-[#496035]'
+          }`}
+        >
+          {allSelected ? '✓ ' : ''}Tout l'historique ({orders.length} commandes)
+        </button>
+
+        <div className="space-y-3 max-h-72 overflow-y-auto mb-4">
+          {years.map(year => {
+            const yearMonths = byYear[year];
+            const allYearSelected = yearMonths.every(k => selected.has(k));
+            const someYearSelected = yearMonths.some(k => selected.has(k));
+            const yearCount = yearMonths.reduce((s, k) => s + orders.filter(o => o.date.slice(0, 7) === k).length, 0);
+
+            return (
+              <div key={year}>
+                <button
+                  onClick={() => toggleYear(year)}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-sm font-bold border transition-colors flex items-center justify-between mb-1 ${
+                    allYearSelected ? 'bg-[#FF4D8A]/20 border-[#FF4D8A]/50 text-[#FF4D8A]'
+                    : someYearSelected ? 'bg-[#FF4D8A]/10 border-[#FF4D8A]/30 text-[#FF4D8A]/80'
+                    : 'border-[#6B7A50] text-white hover:bg-[#496035]'
+                  }`}
+                >
+                  <span>{allYearSelected ? '✓ ' : someYearSelected ? '– ' : ''}{year}</span>
+                  <span className="text-xs font-normal opacity-70">{yearCount} commandes</span>
+                </button>
+
+                <div className="pl-3 space-y-1">
+                  {yearMonths.map(key => {
+                    const count = orders.filter(o => o.date.slice(0, 7) === key).length;
+                    const isSelected = selected.has(key);
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => toggleMonth(key)}
+                        className={`w-full text-left px-3 py-1.5 rounded-lg text-sm border transition-colors flex items-center justify-between ${
+                          isSelected ? 'bg-[#FF4D8A]/20 border-[#FF4D8A]/50 text-[#FF4D8A]' : 'border-[#6B7A50] text-[#C8D4B0] hover:bg-[#496035]'
+                        }`}
+                      >
+                        <span>{isSelected ? '✓ ' : ''}{monthLabel(key)}</span>
+                        <span className="text-xs opacity-70">{count} soir{count > 1 ? 's' : ''}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-[#6B7A50] text-[#C8D4B0] text-sm font-medium hover:bg-[#496035]">
+            Annuler
+          </button>
+          <button
+            onClick={doExport}
+            className="flex-1 py-2.5 rounded-xl bg-[#FF4D8A] text-white text-sm font-bold hover:bg-[#E03070] transition-colors"
+          >
+            ↓ Télécharger
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditModal({ order, onSave, onClose }: { order: DailyOrder; onSave: (u: Partial<DailyOrder>) => void; onClose: () => void }) {
+  const [values, setValues] = useState<Partial<DailyOrder>>({});
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#596643] border border-[#6B7A50] rounded-2xl p-6 w-full max-w-md shadow-xl">
+        <h3 className="text-white font-bold text-lg mb-1">Modifier la commande</h3>
+        <p className="text-[#C8D4B0] text-sm mb-4">{formatDate(order.date)} — {order.burgers_prevus} burgers</p>
+
+        <div className="space-y-3 max-h-96 overflow-y-auto">
+          {EDITABLE_FIELDS.map(({ key, label, unit }) => (
+            <div key={key} className="flex items-center justify-between gap-4">
+              <label className="text-[#C8D4B0] text-sm flex-1">{label}</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  defaultValue={order[key] as number}
+                  onChange={(e) => setValues((v) => ({ ...v, [key]: parseFloat(e.target.value) }))}
+                  className="w-24 bg-[#FFF0F5] text-[#1A1209] text-right rounded-lg px-3 py-1.5 border border-[#496035] focus:border-[#FF4D8A] focus:outline-none text-sm"
+                />
+                {unit && <span className="text-[#8BA870] text-xs w-6">{unit}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-3 mt-5">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-[#6B7A50] text-[#C8D4B0] text-sm font-medium hover:bg-[#496035]">
+            Annuler
+          </button>
+          <button onClick={() => onSave(values)} className="flex-1 py-2.5 rounded-xl bg-[#FF4D8A] text-white text-sm font-bold hover:bg-[#E03070]">
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EcartChip({ value, unit = '' }: { value: number; unit?: string }) {
+  const isNeg = value < 0;
+  const isZero = value === 0;
+  return (
+    <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
+      isNeg ? 'bg-red-500/20 text-red-400' : isZero ? 'bg-[#6B7A50]/30 text-[#8BA870]' : 'bg-green-500/20 text-green-400'
+    }`}>
+      {value > 0 ? '+' : ''}{value}{unit}
+    </span>
+  );
+}
+
+function ReceptionPanel({ r }: { r: MorningReception }) {
+  const rows = [
+    { label: 'Frites', cmd: r.frites_commander, recu: r.frites_recues, ecart: r.ecart_frites, unit: ' kg' },
+    { label: 'Bœuf',  cmd: r.viande_boeuf_commande, recu: r.viande_recue_boeuf, ecart: r.ecart_boeuf, unit: ' kg' },
+    { label: 'Gras',  cmd: r.viande_gras_commande,  recu: r.viande_recue_gras,  ecart: r.ecart_gras,  unit: ' kg' },
+    { label: 'Buns',  cmd: r.buns_commander, recu: r.buns_recus, ecart: r.ecart_buns, unit: '' },
+  ];
+  return (
+    <tr>
+      <td colSpan={9} className="px-4 pb-3 pt-0 bg-[#3D4E2B]">
+        <div className="rounded-xl border border-[#6B7A50] overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-[#2E3D1F] text-[#8BA870]">
+                <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wider">📦 Livraison reçue</th>
+                <th className="text-right px-3 py-1.5">Commandé</th>
+                <th className="text-right px-3 py-1.5">Reçu</th>
+                <th className="text-right px-3 py-1.5">Écart</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(row => (
+                <tr key={row.label} className="border-t border-[#496035]">
+                  <td className="px-3 py-1.5 text-[#C8D4B0] font-medium">{row.label}</td>
+                  <td className="px-3 py-1.5 text-right text-[#8BA870]">{row.cmd}{row.unit}</td>
+                  <td className="px-3 py-1.5 text-right text-white font-bold">{row.recu}{row.unit}</td>
+                  <td className="px-3 py-1.5 text-right"><EcartChip value={row.ecart} unit={row.unit} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete }: {
+  monthKey: string;
+  orders: DailyOrder[];
+  prices: Prices;
+  receptionsMap: Record<string, MorningReception>;
+  onEdit: (o: DailyOrder) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const [expandedReception, setExpandedReception] = useState<string | null>(null);
+
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-2.5 bg-[#596643] rounded-xl border border-[#6B7A50] hover:bg-[#496035] transition-colors"
+      >
+        <span className="text-[#F5EFA0] font-bold text-sm uppercase tracking-wider">{monthLabel(monthKey)}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[#8BA870] text-xs">{orders.length} soir{orders.length > 1 ? 's' : ''}</span>
+          <span className="text-[#8BA870] text-xs">{open ? '▲' : '▼'}</span>
+        </div>
+      </button>
+
+      {open && (
+        <div className="mt-1 overflow-x-auto rounded-xl border border-[#6B7A50]">
+          <table className="w-full min-w-max text-sm">
+            <thead>
+              <tr className="bg-[#496035] text-[#8BA870] text-xs uppercase">
+                <th className="text-left px-4 py-2.5">Date</th>
+                <th className="text-right px-3 py-2.5">Burgers prévus</th>
+                <th className="text-right px-3 py-2.5">Frites blanchir</th>
+                <th className="text-right px-3 py-2.5">Frites cmd</th>
+                <th className="text-right px-3 py-2.5">Viande</th>
+                <th className="text-right px-3 py-2.5">Bœuf</th>
+                <th className="text-right px-3 py-2.5">Gras</th>
+                <th className="text-right px-3 py-2.5">Buns</th>
+                <th className="px-3 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((o, i) => {
+                const reception = receptionsMap[o.id];
+                const isExpanded = expandedReception === o.id;
+                return (
+                  <Fragment key={o.id}>
+                    <tr className={`border-t border-[#6B7A50] ${i % 2 === 0 ? 'bg-[#596643]' : 'bg-[#4D5A39]'} hover:bg-[#496035] transition-colors`}>
+                      <td className="px-4 py-2.5 text-white font-medium whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          {formatDate(o.date)}
+                          {reception && (
+                            <button
+                              onClick={() => setExpandedReception(isExpanded ? null : o.id)}
+                              title="Voir la livraison reçue"
+                              className={`text-xs px-1.5 py-0.5 rounded-md border transition-colors ${
+                                isExpanded
+                                  ? 'bg-[#F5EFA0]/20 border-[#F5EFA0]/50 text-[#F5EFA0]'
+                                  : 'border-[#6B7A50] text-[#8BA870] hover:text-[#F5EFA0] hover:border-[#F5EFA0]/50'
+                              }`}
+                            >
+                              📦
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">{o.burgers_prevus}</td>
+                      <td className="px-3 py-2.5 text-right text-white">{o.frites_blanchir} kg</td>
+                      <td className="px-3 py-2.5 text-right text-white">{o.frites_commander} kg</td>
+                      <td className="px-3 py-2.5 text-right text-white">{o.viande_total} kg</td>
+                      <td className="px-3 py-2.5 text-right text-[#C8D4B0]">{o.boeuf} kg</td>
+                      <td className="px-3 py-2.5 text-right text-[#C8D4B0]">{o.gras} kg</td>
+                      <td className="px-3 py-2.5 text-right text-white">{o.buns_commander}</td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex gap-2 justify-end">
+                          <button onClick={() => onEdit(o)} className="text-[#C8D4B0] hover:text-[#FF4D8A] text-xs px-2 py-1 rounded-lg border border-[#6B7A50] hover:border-[#FF4D8A]/40 transition-colors">
+                            Modifier
+                          </button>
+                          <button onClick={() => onDelete(o.id)} className="text-[#8BA870] hover:text-red-400 text-xs px-2 py-1 rounded-lg border border-[#6B7A50] hover:border-red-400/40 transition-colors">
+                            ✕
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded && reception && <ReceptionPanel r={reception} />}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-[#6B7A50] bg-[#3D4E2B]">
+                <td className="px-4 py-2.5 text-[#F5EFA0] text-xs font-bold uppercase tracking-wider">Total {monthLabel(monthKey)}</td>
+                <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">{orders.reduce((s, o) => s + o.burgers_prevus, 0)}</td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">{orders.reduce((s, o) => s + o.frites_blanchir, 0)} kg</td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">{orders.reduce((s, o) => s + o.frites_commander, 0)} kg</td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">{orders.reduce((s, o) => s + o.viande_total, 0)} kg</td>
+                <td className="px-3 py-2.5 text-right text-[#C8D4B0] font-bold">{orders.reduce((s, o) => s + o.boeuf, 0)} kg</td>
+                <td className="px-3 py-2.5 text-right text-[#C8D4B0] font-bold">{orders.reduce((s, o) => s + o.gras, 0)} kg</td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">{orders.reduce((s, o) => s + o.buns_commander, 0)}</td>
+                <td></td>
+              </tr>
+              {(() => { const { total, breakdown } = calcCost(orders, prices); return total !== null ? (
+              <tr className="bg-[#2E3D1F] border-t border-[#6B7A50]">
+                <td className="px-4 py-2 text-[#F5EFA0] text-xs font-bold">💶 Coût estimé</td>
+                <td colSpan={7} className="px-3 py-2 text-right">
+                  <span className="text-white font-bold">{total.toFixed(2)} €</span>
+                  <span className="text-[#8BA870] text-xs ml-2">({breakdown})</span>
+                </td>
+                <td></td>
+              </tr>) : null; })()}
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function HistoriqueSection() {
+  const [orders, setOrders] = useState<DailyOrder[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [receptionsMap, setReceptionsMap] = useState<Record<string, MorningReception>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<DailyOrder | null>(null);
+  const [showExport, setShowExport] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [data, sup] = await Promise.all([fetchOrders(), fetchSuppliers()]);
+      setOrders(data);
+      setSuppliers(sup);
+    } catch {
+      setError('Impossible de charger l\'historique. Vérifiez la connexion Supabase.');
+      setLoading(false);
+      return;
+    }
+    try {
+      const receptions = await fetchReceptions();
+      const map: Record<string, MorningReception> = {};
+      receptions.forEach(r => { map[r.order_id] = r; });
+      setReceptionsMap(map);
+    } catch {
+      // La table morning_reception n'existe pas encore — on continue sans
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleEdit = async (updated: Partial<DailyOrder>) => {
+    if (!editing) return;
+    await updateOrder(editing.id, updated);
+    setEditing(null);
+    load();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Supprimer cette ligne ?')) return;
+    await deleteOrder(id);
+    setOrders((prev) => prev.filter((o) => o.id !== id));
+  };
+
+  const grouped = groupByMonth(orders);
+  const monthKeys = Object.keys(grouped).sort().reverse();
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="min-w-0">
+          <h2 className="text-xl font-bold text-[#1A1209]">Historique</h2>
+          <p className="text-[#C4A8B5] text-sm mt-0.5">{orders.length} commandes</p>
+        </div>
+        <button
+          onClick={() => setShowExport(true)}
+          className="shrink-0 flex items-center gap-2 bg-[#596643] hover:bg-[#496035] border border-[#6B7A50] text-[#C8D4B0] hover:text-white px-3 py-2 rounded-xl text-sm font-medium transition-colors"
+        >
+          ↓ <span className="hidden sm:inline">Export </span>Excel
+        </button>
+      </div>
+
+      {loading && <div className="text-center py-16 text-[#C4A8B5]">Chargement…</div>}
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-500 text-sm mb-4">{error}</div>
+      )}
+
+      {!loading && !error && orders.length === 0 && (
+        <div className="text-center py-16 text-[#C4A8B5]">
+          <p className="text-4xl mb-3">📋</p>
+          <p>Aucune commande enregistrée pour l'instant.</p>
+          <p className="text-xs mt-2">Les commandes validées sur mobile apparaîtront ici.</p>
+        </div>
+      )}
+
+      {monthKeys.map((key) => (
+        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={handleDelete} />
+      ))}
+
+      {editing && <EditModal order={editing} onSave={handleEdit} onClose={() => setEditing(null)} />}
+      {showExport && <ExportModal orders={orders} monthKeys={monthKeys} onClose={() => setShowExport(false)} />}
+    </div>
+  );
+}
