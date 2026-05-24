@@ -1,6 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import AdminLoginScreen from './AdminLoginScreen';
 import HistoriqueSection from './HistoriqueSection';
 import ParametresSection from './ParametresSection';
 import DashboardSection from './DashboardSection';
@@ -10,6 +12,25 @@ type AdminTab = 'dashboard' | 'historique' | 'employes' | 'parametres';
 
 export default function AdminApp() {
   const [tab, setTab] = useState<AdminTab>('historique');
+  const [session, setSession] = useState<'loading' | 'loggedIn' | 'loggedOut'>('loading');
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session ? 'loggedIn' : 'loggedOut');
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => {
+      setSession(s ? 'loggedIn' : 'loggedOut');
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (session === 'loading') {
+    return <div className="min-h-screen bg-[#FFF0F5] flex items-center justify-center text-[#A0909A]">Chargement…</div>;
+  }
+
+  if (session === 'loggedOut') {
+    return <AdminLoginScreen onLogin={() => setSession('loggedIn')} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#FFF0F5] text-[#1A1209]">
@@ -22,9 +43,17 @@ export default function AdminApp() {
               <p className="text-[#8BA870] text-xs hidden sm:block">Interface Admin</p>
             </div>
           </div>
-          <a href="/mobile" className="text-[#FF4D8A] text-sm font-semibold hover:underline whitespace-nowrap">
-            → App commandes
-          </a>
+          <div className="flex items-center gap-3">
+            <a href="/mobile" className="text-[#FF4D8A] text-sm font-semibold hover:underline whitespace-nowrap">
+              → App commandes
+            </a>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="text-[#8BA870] text-xs hover:text-white border border-[#6B7A50] px-2.5 py-1 rounded-lg hover:bg-[#496035] transition-colors"
+            >
+              Déconnexion
+            </button>
+          </div>
         </div>
 
         <div className="max-w-6xl mx-auto px-2 sm:px-6 flex gap-0 overflow-x-auto scrollbar-none">
