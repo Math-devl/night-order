@@ -25,25 +25,17 @@ export async function POST(req: NextRequest) {
   // Si admin avec email : créer le compte Supabase Auth et générer le lien
   let adminInviteLink: string | null = null;
   if (is_admin && email) {
-    // Essaie d'abord une invitation (nouveau compte)
-    const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'invite',
-      email,
-      options: { redirectTo: adminUrl },
+    // Invite admin via Supabase (son propre service mail, indépendant de Resend)
+    const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: adminUrl,
     });
-    if (!linkError) {
-      adminInviteLink = data?.properties?.action_link ?? null;
-    } else {
-      // Compte déjà existant → lien de réinitialisation de mot de passe
-      const { data: recoveryData, error: recoveryError } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'recovery',
-        email,
-        options: { redirectTo: adminUrl },
-      });
-      if (recoveryError) console.error('[send-invite] recovery link error:', recoveryError.message);
-      else adminInviteLink = recoveryData?.properties?.action_link ?? null;
+    if (inviteError && inviteError.message.includes('already been registered')) {
+      // Compte existant → envoie un lien de réinitialisation de mot de passe
+      await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo: adminUrl });
+    } else if (inviteError) {
+      console.error('[send-invite] invite error:', inviteError.message);
     }
-    console.log('[send-invite] adminInviteLink:', adminInviteLink ? 'generated' : 'null');
+    console.log('[send-invite] admin invite sent via Supabase for:', email);
   }
 
   const adminSection = adminInviteLink ? `
@@ -65,7 +57,7 @@ export async function POST(req: NextRequest) {
 
     <div style="background:#596643;padding:32px 32px 24px;text-align:center;">
       <div style="font-size:48px;margin-bottom:8px;">🍔</div>
-      <h1 style="color:#fff;font-size:22px;font-weight:700;margin:0 0 4px;">Night Order</h1>
+      <h1 style="color:#fff;font-size:22px;font-weight:700;margin:0 0 4px;">Smashé Night Order</h1>
       <p style="color:#8BA870;font-size:13px;margin:0;">Ton accès à l'application</p>
     </div>
 
@@ -127,7 +119,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await resend.emails.send({
     from: 'Night Order <noreply@monsmashe.com>',
     to: toAddress,
-    subject: `Ton accès Night Order — code : ${code}`,
+    subject: `Ton accès Smashé Night Order — code : ${code}`,
     html,
   });
 
