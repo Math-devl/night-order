@@ -108,8 +108,8 @@ export async function POST(req: NextRequest) {
 `;
 
   const { data, error } = await resend.emails.send({
-    from: 'Night Order <onboarding@resend.dev>',
-    to: 'smash.basque@gmail.com',
+    from: 'Night Order <noreply@monsmashe.com>',
+    to: email || 'mathieu.devliegher@gmail.com',
     subject: `Ton accès Night Order — code : ${code}`,
     html,
   });
