@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
 export async function POST(req: NextRequest) {
-  const { email, first_name, last_name, code } = await req.json();
+  const { email, first_name, last_name, code, is_admin } = await req.json();
 
   if (!first_name || !code) {
     return NextResponse.json({ error: 'Paramètres manquants.' }, { status: 400 });
@@ -12,6 +18,28 @@ export async function POST(req: NextRequest) {
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
   const mobileUrl = `${appUrl}/mobile`;
+  const adminUrl = `${appUrl}/admin`;
+
+  // Si admin avec email : créer le compte Supabase Auth et générer le lien
+  let adminInviteLink: string | null = null;
+  if (is_admin && email) {
+    const { data } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'invite',
+      email,
+      options: { redirectTo: adminUrl },
+    });
+    adminInviteLink = data?.properties?.action_link ?? null;
+  }
+
+  const adminSection = adminInviteLink ? `
+      <div style="background:#FFF0F5;border-radius:16px;padding:20px;margin-bottom:24px;">
+        <p style="color:#A0909A;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 8px;">Accès administrateur</p>
+        <p style="color:#1A1209;font-size:13px;margin:0 0 12px;">En tant qu'administrateur, tu as accès à l'interface de gestion. Clique ci-dessous pour définir ton mot de passe admin.</p>
+        <a href="${adminInviteLink}" style="display:inline-block;background:#FF4D8A;color:#fff;font-size:14px;font-weight:700;padding:12px 24px;border-radius:12px;text-decoration:none;">
+          Créer mon mot de passe admin →
+        </a>
+        <p style="color:#A0909A;font-size:11px;margin:10px 0 0;">Lien valable 24h · Interface : <a href="${adminUrl}" style="color:#FF4D8A;">${adminUrl}</a></p>
+      </div>` : '';
 
   const html = `
 <!DOCTYPE html>
@@ -33,15 +61,17 @@ export async function POST(req: NextRequest) {
       </p>
 
       <div style="background:#FFF0F5;border-radius:16px;padding:20px;margin-bottom:24px;text-align:center;">
-        <p style="color:#A0909A;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 4px;">Ton code d'accès provisoire</p>
+        <p style="color:#A0909A;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;margin:0 0 4px;">Ton code d'accès app commandes</p>
         <p style="color:#FF4D8A;font-size:48px;font-weight:700;letter-spacing:0.3em;margin:0;">${code}</p>
         <p style="color:#A0909A;font-size:11px;margin:8px 0 0;">Tu pourras le modifier depuis l'onglet Compte</p>
       </div>
 
       <div style="background:#F5F5F5;border-radius:16px;padding:20px;margin-bottom:24px;">
-        <p style="color:#1A1209;font-size:13px;font-weight:600;margin:0 0 4px;">Lien vers l'application</p>
+        <p style="color:#1A1209;font-size:13px;font-weight:600;margin:0 0 4px;">Lien vers l'app commandes</p>
         <a href="${mobileUrl}" style="color:#FF4D8A;font-size:14px;font-weight:700;word-break:break-all;">${mobileUrl}</a>
       </div>
+
+      ${adminSection}
 
       <div style="margin-bottom:12px;">
         <h2 style="color:#1A1209;font-size:15px;font-weight:700;margin:0 0 12px;">📱 Ajouter l'app à ton écran d'accueil</h2>

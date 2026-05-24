@@ -10,7 +10,7 @@ function generateCode(): string {
 
 function EmployeeModal({ initial, onSave, onClose }: {
   initial: Partial<Employee>;
-  onSave: (code: string, firstName: string, email?: string) => void;
+  onSave: (code: string, firstName: string, email?: string, isAdmin?: boolean) => void;
   onClose: () => void;
 }) {
   const isNew = !initial.id;
@@ -34,7 +34,7 @@ function EmployeeModal({ initial, onSave, onClose }: {
       ...(isNew ? { access_code: code, is_active: true } : {}),
     });
     if (err) { setError(err); setSaving(false); return; }
-    onSave(code, firstName.trim(), email.trim() || undefined);
+    onSave(code, firstName.trim(), email.trim() || undefined, isAdmin);
   };
 
   return (
@@ -102,7 +102,7 @@ export default function EmployesTab() {
 
   useEffect(() => { fetchEmployees().then(setEmployees); }, [tick]);
 
-  const handleSave = async (code: string, firstName: string, email?: string | undefined) => {
+  const handleSave = async (code: string, firstName: string, email?: string | undefined, isAdmin?: boolean) => {
     setModal(null);
     refresh();
     if (!code || modal?.id) return;
@@ -112,7 +112,7 @@ export default function EmployesTab() {
       const res = await fetch('/api/send-invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, first_name: firstName, code }),
+        body: JSON.stringify({ email, first_name: firstName, code, is_admin: isAdmin ?? false }),
       });
       emailSent = res.ok;
       if (!res.ok) {
@@ -189,7 +189,7 @@ export default function EmployesTab() {
       {modal !== null && (
         <EmployeeModal
           initial={modal}
-          onSave={(code, firstName, email) => handleSave(code, firstName, email)}
+          onSave={(code, firstName, email, isAdmin) => handleSave(code, firstName, email, isAdmin)}
           onClose={() => setModal(null)}
         />
       )}
