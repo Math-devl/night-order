@@ -25,13 +25,24 @@ export async function POST(req: NextRequest) {
   // Si admin avec email : créer le compte Supabase Auth et générer le lien
   let adminInviteLink: string | null = null;
   if (is_admin && email) {
+    // Essaie d'abord une invitation (nouveau compte)
     const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'invite',
       email,
       options: { redirectTo: adminUrl },
     });
-    if (linkError) console.error('[send-invite] generateLink error:', linkError.message);
-    adminInviteLink = data?.properties?.action_link ?? null;
+    if (!linkError) {
+      adminInviteLink = data?.properties?.action_link ?? null;
+    } else {
+      // Compte déjà existant → lien de réinitialisation de mot de passe
+      const { data: recoveryData, error: recoveryError } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'recovery',
+        email,
+        options: { redirectTo: adminUrl },
+      });
+      if (recoveryError) console.error('[send-invite] recovery link error:', recoveryError.message);
+      else adminInviteLink = recoveryData?.properties?.action_link ?? null;
+    }
     console.log('[send-invite] adminInviteLink:', adminInviteLink ? 'generated' : 'null');
   }
 
@@ -114,8 +125,8 @@ export async function POST(req: NextRequest) {
   const toAddress = email || 'mathieu.devliegher@gmail.com';
   console.log('[send-invite] sending to:', toAddress);
   const { data, error } = await resend.emails.send({
-    from: 'Night Order <noreply@monsmashe.com>',
-    to: toAddress,
+    from: 'Night Order <onboarding@resend.dev>',
+    to: 'smash.basque@gmail.com',
     subject: `Ton accès Night Order — code : ${code}`,
     html,
   });
