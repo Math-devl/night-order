@@ -20,15 +20,19 @@ export async function POST(req: NextRequest) {
   const mobileUrl = `${appUrl}/mobile`;
   const adminUrl = `${appUrl}/admin`;
 
+  console.log('[send-invite] email:', email, '| is_admin:', is_admin);
+
   // Si admin avec email : créer le compte Supabase Auth et générer le lien
   let adminInviteLink: string | null = null;
   if (is_admin && email) {
-    const { data } = await supabaseAdmin.auth.admin.generateLink({
+    const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'invite',
       email,
       options: { redirectTo: adminUrl },
     });
+    if (linkError) console.error('[send-invite] generateLink error:', linkError.message);
     adminInviteLink = data?.properties?.action_link ?? null;
+    console.log('[send-invite] adminInviteLink:', adminInviteLink ? 'generated' : 'null');
   }
 
   const adminSection = adminInviteLink ? `
@@ -107,9 +111,11 @@ export async function POST(req: NextRequest) {
 </html>
 `;
 
+  const toAddress = email || 'mathieu.devliegher@gmail.com';
+  console.log('[send-invite] sending to:', toAddress);
   const { data, error } = await resend.emails.send({
     from: 'Night Order <noreply@monsmashe.com>',
-    to: email || 'mathieu.devliegher@gmail.com',
+    to: toAddress,
     subject: `Ton accès Night Order — code : ${code}`,
     html,
   });
