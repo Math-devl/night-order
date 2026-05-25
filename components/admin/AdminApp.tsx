@@ -19,6 +19,7 @@ export default function AdminApp() {
       setSession(data.session ? 'loggedIn' : 'loggedOut');
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      console.log('[auth]', event, !!s);
       if (event === 'SIGNED_OUT') {
         setSession('loggedOut');
       } else if (s) {
