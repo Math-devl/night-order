@@ -5,12 +5,14 @@ import { supabase } from '@/lib/supabase';
 
 interface Props {
   onLogin: () => void;
+  onAccessDenied?: (msg: string) => void;
+  accessDeniedError?: string | null;
 }
 
-export default function AdminLoginScreen({ onLogin }: Props) {
+export default function AdminLoginScreen({ onLogin, onAccessDenied, accessDeniedError }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(accessDeniedError ?? null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,8 +37,8 @@ export default function AdminLoginScreen({ onLogin }: Props) {
       .maybeSingle();
 
     if (!employee) {
+      onAccessDenied?.('Accès refusé. Ce compte n\'a pas les droits administrateur.');
       await supabase.auth.signOut();
-      setError('Accès refusé. Ce compte n\'a pas les droits administrateur.');
       setLoading(false);
       return;
     }

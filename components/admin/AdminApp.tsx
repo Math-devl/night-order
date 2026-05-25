@@ -13,13 +13,19 @@ type AdminTab = 'dashboard' | 'historique' | 'employes' | 'parametres';
 export default function AdminApp() {
   const [tab, setTab] = useState<AdminTab>('historique');
   const [session, setSession] = useState<'loading' | 'loggedIn' | 'loggedOut'>('loading');
+  const [accessDeniedError, setAccessDeniedError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session ? 'loggedIn' : 'loggedOut');
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => {
-      setSession(s ? 'loggedIn' : 'loggedOut');
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'SIGNED_OUT') {
+        setSession('loggedOut');
+      } else if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        setSession(s ? 'loggedIn' : 'loggedOut');
+      }
+      // SIGNED_IN is handled by AdminLoginScreen after the employee check
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -29,7 +35,7 @@ export default function AdminApp() {
   }
 
   if (session === 'loggedOut') {
-    return <AdminLoginScreen onLogin={() => setSession('loggedIn')} />;
+    return <AdminLoginScreen onLogin={() => setSession('loggedIn')} onAccessDenied={setAccessDeniedError} accessDeniedError={accessDeniedError} />;
   }
 
   return (

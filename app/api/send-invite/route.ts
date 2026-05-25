@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
   const toAddress = email || 'mathieu.devliegher@gmail.com';
   console.log('[send-invite] sending to:', toAddress);
   const { data, error } = await resend.emails.send({
-    from: 'Night Order <noreply@monsmashe.com>',
+    from: 'Smashe Night Order <noreply@monsmashe.com>',
     to: toAddress,
     subject: `Ton accès Smashé Night Order — code : ${code}`,
     html,

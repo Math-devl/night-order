@@ -5,6 +5,7 @@ create table employees (
   email text,
   access_code text not null,
   is_active boolean default true,
+  is_admin boolean default false,
   created_at timestamptz default now()
 );
 
