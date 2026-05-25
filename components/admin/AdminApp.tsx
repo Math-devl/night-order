@@ -13,7 +13,6 @@ type AdminTab = 'dashboard' | 'historique' | 'employes' | 'parametres';
 export default function AdminApp() {
   const [tab, setTab] = useState<AdminTab>('historique');
   const [session, setSession] = useState<'loading' | 'loggedIn' | 'loggedOut'>('loading');
-  const [accessDeniedError, setAccessDeniedError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -35,7 +34,7 @@ export default function AdminApp() {
   }
 
   if (session === 'loggedOut') {
-    return <AdminLoginScreen onLogin={() => setSession('loggedIn')} onAccessDenied={setAccessDeniedError} accessDeniedError={accessDeniedError} />;
+    return <AdminLoginScreen onLogin={() => setSession('loggedIn')} />;
   }
 
   return (

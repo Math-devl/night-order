@@ -5,14 +5,12 @@ import { supabase } from '@/lib/supabase';
 
 interface Props {
   onLogin: () => void;
-  onAccessDenied?: (msg: string) => void;
-  accessDeniedError?: string | null;
 }
 
-export default function AdminLoginScreen({ onLogin, onAccessDenied, accessDeniedError }: Props) {
+export default function AdminLoginScreen({ onLogin }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(accessDeniedError ?? null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -20,25 +18,10 @@ export default function AdminLoginScreen({ onLogin, onAccessDenied, accessDenied
     setError(null);
     setLoading(true);
 
-    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (authError || !data.user) {
+    if (authError) {
       setError('Email ou mot de passe incorrect.');
-      setLoading(false);
-      return;
-    }
-
-    // Vérifie que l'utilisateur est bien un admin
-    const { data: employee } = await supabase
-      .from('employees')
-      .select('is_admin')
-      .eq('email', data.user.email)
-      .eq('is_admin', true)
-      .maybeSingle();
-
-    if (!employee) {
-      onAccessDenied?.('Accès refusé. Ce compte n\'a pas les droits administrateur.');
-      await supabase.auth.signOut();
       setLoading(false);
       return;
     }
