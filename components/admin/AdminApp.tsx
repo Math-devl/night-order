@@ -21,10 +21,9 @@ export default function AdminApp() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === 'SIGNED_OUT') {
         setSession('loggedOut');
-      } else if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
-        setSession(s ? 'loggedIn' : 'loggedOut');
+      } else if (s) {
+        setSession('loggedIn');
       }
-      // SIGNED_IN is handled by AdminLoginScreen after the employee check
     });
     return () => subscription.unsubscribe();
   }, []);
