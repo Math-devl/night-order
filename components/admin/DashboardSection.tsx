@@ -32,7 +32,9 @@ const MONTHS_FR = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juill
 
 interface WeekInfo { start: string; end: string; label: string }
 
-function fmtDate(d: Date): string { return d.toISOString().split('T')[0]; }
+function fmtDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 function fmtShort(d: Date): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
