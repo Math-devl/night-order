@@ -57,11 +57,8 @@ function buildUpcomingPlaceholders(orders: DailyOrder[]): OrderRow[] {
 
 const EDITABLE_FIELDS: { key: EditableField; label: string; unit?: string }[] = [
   { key: 'burgers_prevus', label: 'Burgers prévus' },
-  { key: 'frites_blanchir', label: 'Frites à blanchir', unit: 'kg' },
   { key: 'frites_commander', label: 'Frites à commander', unit: 'kg' },
   { key: 'viande_total', label: 'Viande totale', unit: 'kg' },
-  { key: 'boeuf', label: 'Bœuf', unit: 'kg' },
-  { key: 'gras', label: 'Gras', unit: 'kg' },
   { key: 'buns_commander', label: 'Buns commandés' },
 ];
 
@@ -81,6 +78,11 @@ function monthLabel(key: string): string {
 }
 
 const fmt1 = (n: number) => n.toFixed(1);
+
+function daysInMonthFromKey(monthKey: string): number {
+  const [y, m] = monthKey.split('-').map(Number);
+  return new Date(y, m, 0).getDate();
+}
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -292,7 +294,7 @@ function ReceptionPanel({ r }: { r: MorningReception }) {
   ];
   return (
     <tr>
-      <td colSpan={9} className="px-4 pb-3 pt-0 bg-[#3D4E2B]">
+      <td colSpan={6} className="px-4 pb-3 pt-0 bg-[#3D4E2B]">
         <div className="rounded-xl border border-[#6B7A50] overflow-hidden">
           <table className="w-full text-xs">
             <thead>
@@ -339,7 +341,7 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete 
       >
         <span className="text-[#F5EFA0] font-bold text-sm uppercase tracking-wider">{monthLabel(monthKey)}</span>
         <div className="flex items-center gap-3">
-          <span className="text-[#8BA870] text-xs">{orders.length} soir{orders.length > 1 ? 's' : ''}</span>
+          <span className="text-[#8BA870] text-xs">{orders.filter(o => !o.isPlaceholder && o.burgers_prevus > 0).length}/{daysInMonthFromKey(monthKey)} jours</span>
           <span className="text-[#8BA870] text-xs">{open ? '▲' : '▼'}</span>
         </div>
       </button>
@@ -351,11 +353,8 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete 
               <tr className="bg-[#496035] text-[#8BA870] text-xs uppercase">
                 <th className="text-left px-4 py-2.5">Date</th>
                 <th className="text-right px-3 py-2.5">Burgers prévus</th>
-                <th className="text-right px-3 py-2.5">Frites blanchir</th>
                 <th className="text-right px-3 py-2.5">Frites cmd</th>
                 <th className="text-right px-3 py-2.5">Viande</th>
-                <th className="text-right px-3 py-2.5">Bœuf</th>
-                <th className="text-right px-3 py-2.5">Gras</th>
                 <th className="text-right px-3 py-2.5">Buns</th>
                 <th className="px-3 py-2.5"></th>
               </tr>
@@ -399,19 +398,10 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete 
                         {o.burgers_prevus === 0 ? <span className="text-[#6B7A50]">—</span> : o.burgers_prevus}
                       </td>
                       <td className="px-3 py-2.5 text-right text-white">
-                        {o.burgers_prevus === 0 ? <span className="text-[#6B7A50]">—</span> : `${fmt1(o.frites_blanchir)} kg`}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-white">
                         {o.burgers_prevus === 0 ? <span className="text-[#6B7A50]">—</span> : `${fmt1(o.frites_commander)} kg`}
                       </td>
                       <td className="px-3 py-2.5 text-right text-white">
                         {o.burgers_prevus === 0 ? <span className="text-[#6B7A50]">—</span> : `${fmt1(o.viande_total)} kg`}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-[#C8D4B0]">
-                        {o.burgers_prevus === 0 ? <span className="text-[#6B7A50]">—</span> : `${fmt1(o.boeuf)} kg`}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-[#C8D4B0]">
-                        {o.burgers_prevus === 0 ? <span className="text-[#6B7A50]">—</span> : `${fmt1(o.gras)} kg`}
                       </td>
                       <td className="px-3 py-2.5 text-right text-white">{o.buns_commander}</td>
                       <td className="px-3 py-2.5">
@@ -440,18 +430,15 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete 
               <tr className="border-t-2 border-[#6B7A50] bg-[#3D4E2B]">
                 <td className="px-4 py-2.5 text-[#F5EFA0] text-xs font-bold uppercase tracking-wider">Total {monthLabel(monthKey)}</td>
                 <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">{real.reduce((s, o) => s + o.burgers_prevus, 0)}</td>
-                <td className="px-3 py-2.5 text-right text-white font-bold">{fmt1(real.reduce((s, o) => s + o.frites_blanchir, 0))} kg</td>
                 <td className="px-3 py-2.5 text-right text-white font-bold">{fmt1(real.reduce((s, o) => s + o.frites_commander, 0))} kg</td>
                 <td className="px-3 py-2.5 text-right text-white font-bold">{fmt1(real.reduce((s, o) => s + o.viande_total, 0))} kg</td>
-                <td className="px-3 py-2.5 text-right text-[#C8D4B0] font-bold">{fmt1(real.reduce((s, o) => s + o.boeuf, 0))} kg</td>
-                <td className="px-3 py-2.5 text-right text-[#C8D4B0] font-bold">{fmt1(real.reduce((s, o) => s + o.gras, 0))} kg</td>
                 <td className="px-3 py-2.5 text-right text-white font-bold">{real.reduce((s, o) => s + o.buns_commander, 0)}</td>
                 <td></td>
               </tr>
               {total !== null ? (
               <tr className="bg-[#2E3D1F] border-t border-[#6B7A50]">
                 <td className="px-4 py-2 text-[#F5EFA0] text-xs font-bold">💶 Coût estimé</td>
-                <td colSpan={7} className="px-3 py-2 text-right">
+                <td colSpan={4} className="px-3 py-2 text-right">
                   <span className="text-white font-bold">{total.toFixed(2)} €</span>
                   <span className="text-[#8BA870] text-xs ml-2">({breakdown})</span>
                 </td>

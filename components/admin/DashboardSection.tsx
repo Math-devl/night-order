@@ -304,7 +304,7 @@ export default function DashboardSection() {
                       <span className={`font-medium ${isCurrentWeek ? 'text-[#FF4D8A]' : 'text-[#C8D4B0]'}`}>{week.label}</span>
                       {isCurrentWeek && <span className="ml-2 text-[10px] bg-[#FF4D8A]/20 text-[#FF4D8A] border border-[#FF4D8A]/30 px-1.5 py-0.5 rounded-full font-bold">en cours</span>}
                     </td>
-                    <td className="py-3 px-3 text-center text-[#8BA870] text-sm">{wo.length}</td>
+                    <td className="py-3 px-3 text-center text-[#8BA870] text-sm">{wo.filter(o => o.burgers_prevus > 0).length}/7</td>
                     {hasData ? (
                       <>
                         <td className="py-3 px-3 text-center text-white font-bold text-sm">{sumKey(wo, 'burgers_prevus')}</td>
@@ -324,7 +324,7 @@ export default function DashboardSection() {
               <tfoot>
                 <tr className="border-t-2 border-[#6B7A50] bg-[#496035]">
                   <td className="py-2.5 px-3 text-[#F5EFA0] text-sm font-bold">Total {MONTHS_FR[month]}</td>
-                  <td className="py-2.5 px-3 text-center text-[#8BA870] text-sm">{monthOrders.length}</td>
+                  <td className="py-2.5 px-3 text-center text-[#8BA870] text-sm">{monthOrders.filter(o => o.burgers_prevus > 0).length}/{new Date(year, month + 1, 0).getDate()}</td>
                   <td className="py-2.5 px-3 text-center text-white font-bold text-sm">{curr.burgers}</td>
                   <td className="py-2.5 px-3 text-center text-white font-bold text-sm">{curr.frites} kg</td>
                   <td className="py-2.5 px-3 text-center text-white font-bold text-sm">{curr.viande} kg</td>
