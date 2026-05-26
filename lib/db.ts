@@ -20,15 +20,28 @@ export interface DailyOrder {
   validated_at: string;
 }
 
+const FR_DAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+
 export async function saveOrder(
   inventory: InventoryState,
   forecast: ForecastState,
   orders: CalculatedOrders,
-  dayName: string
+  _dayName: string,
+  bunsJ2: number = 0
 ): Promise<{ error: string | null }> {
-  const { error } = await supabase.from('daily_orders').insert({
-    date: new Date().toISOString().split('T')[0],
-    day_name: dayName,
+  // La commande passée le soir de J est enregistrée à J+1 (jour de livraison)
+  const delivery = new Date();
+  delivery.setDate(delivery.getDate() + 1);
+  const deliveryDate = delivery.toISOString().split('T')[0];
+  const deliveryDayName = FR_DAYS[delivery.getDay()];
+
+  // Si une ligne pré-commande existe pour J+1 (ex: buns pré-commandés), on la met à jour
+  const { data: existing } = await supabase
+    .from('daily_orders').select('id, buns_commander').eq('date', deliveryDate).maybeSingle();
+
+  const orderData = {
+    date: deliveryDate,
+    day_name: deliveryDayName,
     burgers_prevus: parseInt(forecast.burgersPrevus),
     frites_fraiches: parseFloat(inventory.fritesFraiches) || 0,
     frites_blanchies: parseFloat(inventory.fritesBlanchies) || 0,
@@ -40,10 +53,43 @@ export async function saveOrder(
     viande_total: orders.viandeTotal,
     boeuf: orders.boeuf,
     gras: orders.gras,
-    buns_commander: orders.bunsACommander,
+    // Les buns se commandent toujours en J+2 — si la ligne J+1 avait déjà des buns pré-commandés, on préserve
+    buns_commander: existing?.buns_commander ?? 0,
     validated_at: new Date().toISOString(),
-  });
-  return { error: error?.message ?? null };
+  };
+
+  const { error } = existing
+    ? await supabase.from('daily_orders').update(orderData).eq('id', existing.id)
+    : await supabase.from('daily_orders').insert(orderData);
+
+  if (error) return { error: error.message };
+
+  // Pré-commande J+2
+  if (bunsJ2 > 0) {
+    const j2 = new Date();
+    j2.setDate(j2.getDate() + 2);
+    const j2Date = j2.toISOString().split('T')[0];
+    const j2Day = FR_DAYS[j2.getDay()];
+
+    const { data: j2Existing } = await supabase
+      .from('daily_orders').select('id, burgers_prevus').eq('date', j2Date).maybeSingle();
+
+    if (!j2Existing) {
+      await supabase.from('daily_orders').insert({
+        date: j2Date, day_name: j2Day,
+        burgers_prevus: 0, frites_fraiches: 0, frites_blanchies: 0,
+        boules_restantes: 0, pct_gras: 26.5, buns_restants: 0,
+        frites_blanchir: 0, frites_commander: 0, viande_total: 0,
+        boeuf: 0, gras: 0, buns_commander: bunsJ2,
+        validated_at: new Date().toISOString(),
+      });
+    } else if (j2Existing.burgers_prevus === 0) {
+      // Mise à jour d'une pré-commande existante (pas encore validée)
+      await supabase.from('daily_orders').update({ buns_commander: bunsJ2 }).eq('id', j2Existing.id);
+    }
+  }
+
+  return { error: null };
 }
 
 export async function fetchOrders(): Promise<DailyOrder[]> {
@@ -130,6 +176,29 @@ export async function fetchReceptions(): Promise<MorningReception[]> {
     .order('date', { ascending: false });
   if (error) throw error;
   return data ?? [];
+}
+
+export async function fetchTodayReception(): Promise<MorningReception | null> {
+  const today = new Date().toISOString().split('T')[0];
+  const { data } = await supabase
+    .from('morning_reception')
+    .select('*')
+    .eq('date', today)
+    .maybeSingle();
+  return data ?? null;
+}
+
+export async function hasTodayInventoryBeenDone(): Promise<boolean> {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowDate = tomorrow.toISOString().split('T')[0];
+  const { data } = await supabase
+    .from('daily_orders')
+    .select('id')
+    .eq('date', tomorrowDate)
+    .gt('burgers_prevus', 0)
+    .maybeSingle();
+  return data !== null;
 }
 
 // ─── Suppliers ───────────────────────────────────────────────────────────────

@@ -29,6 +29,31 @@ function calcCost(orders: DailyOrder[], prices: Prices): { total: number | null;
 }
 
 type EditableField = keyof Omit<DailyOrder, 'id' | 'date' | 'day_name' | 'validated_at'>;
+type OrderRow = DailyOrder & { isPlaceholder?: boolean };
+
+const FR_DAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+
+function buildUpcomingPlaceholders(orders: DailyOrder[]): OrderRow[] {
+  const existingDates = new Set(orders.map(o => o.date));
+  const placeholders: OrderRow[] = [];
+  for (let offset = 0; offset <= 2; offset++) {
+    const d = new Date();
+    d.setDate(d.getDate() + offset);
+    const date = d.toISOString().split('T')[0];
+    if (!existingDates.has(date)) {
+      placeholders.push({
+        id: `placeholder-${date}`, date,
+        day_name: FR_DAYS[d.getDay()],
+        burgers_prevus: 0, frites_fraiches: 0, frites_blanchies: 0,
+        boules_restantes: 0, pct_gras: 26.5, buns_restants: 0,
+        frites_blanchir: 0, frites_commander: 0, viande_total: 0,
+        boeuf: 0, gras: 0, buns_commander: 0,
+        validated_at: '', isPlaceholder: true,
+      });
+    }
+  }
+  return placeholders;
+}
 
 const EDITABLE_FIELDS: { key: EditableField; label: string; unit?: string }[] = [
   { key: 'burgers_prevus', label: 'Burgers prévus' },
@@ -40,13 +65,13 @@ const EDITABLE_FIELDS: { key: EditableField; label: string; unit?: string }[] = 
   { key: 'buns_commander', label: 'Buns commandés' },
 ];
 
-function groupByMonth(orders: DailyOrder[]): Record<string, DailyOrder[]> {
+function groupByMonth(orders: OrderRow[]): Record<string, OrderRow[]> {
   return orders.reduce((acc, o) => {
     const key = o.date.slice(0, 7);
     if (!acc[key]) acc[key] = [];
     acc[key].push(o);
     return acc;
-  }, {} as Record<string, DailyOrder[]>);
+  }, {} as Record<string, OrderRow[]>);
 }
 
 function monthLabel(key: string): string {
@@ -54,6 +79,8 @@ function monthLabel(key: string): string {
   const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
   return `${months[parseInt(m) - 1]} ${y}`;
 }
+
+const fmt1 = (n: number) => n.toFixed(1);
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -295,7 +322,7 @@ function ReceptionPanel({ r }: { r: MorningReception }) {
 
 function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete }: {
   monthKey: string;
-  orders: DailyOrder[];
+  orders: OrderRow[];
   prices: Prices;
   receptionsMap: Record<string, MorningReception>;
   onEdit: (o: DailyOrder) => void;
@@ -339,10 +366,20 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete 
                 const isExpanded = expandedReception === o.id;
                 return (
                   <Fragment key={o.id}>
-                    <tr className={`border-t border-[#6B7A50] ${i % 2 === 0 ? 'bg-[#596643]' : 'bg-[#4D5A39]'} hover:bg-[#496035] transition-colors`}>
+                    <tr className={`border-t border-[#6B7A50] ${'isPlaceholder' in o && o.isPlaceholder ? 'bg-[#3D4E2B]/60 opacity-60' : i % 2 === 0 ? 'bg-[#596643]' : 'bg-[#4D5A39]'} hover:bg-[#496035] transition-colors`}>
                       <td className="px-4 py-2.5 text-white font-medium whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           {formatDate(o.date)}
+                          {'isPlaceholder' in o && o.isPlaceholder && (
+                            <span className="text-[10px] bg-[#6B7A50]/40 text-[#8BA870] border border-[#6B7A50] px-1.5 py-0.5 rounded-full font-bold">
+                              À venir
+                            </span>
+                          )}
+                          {!('isPlaceholder' in o && o.isPlaceholder) && o.burgers_prevus === 0 && (
+                            <span className="text-[10px] bg-[#F5EFA0]/20 text-[#F5EFA0] border border-[#F5EFA0]/40 px-1.5 py-0.5 rounded-full font-bold">
+                              Buns J+2
+                            </span>
+                          )}
                           {reception && (
                             <button
                               onClick={() => setExpandedReception(isExpanded ? null : o.id)}
@@ -358,22 +395,36 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete 
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">{o.burgers_prevus}</td>
-                      <td className="px-3 py-2.5 text-right text-white">{o.frites_blanchir} kg</td>
-                      <td className="px-3 py-2.5 text-right text-white">{o.frites_commander} kg</td>
-                      <td className="px-3 py-2.5 text-right text-white">{o.viande_total} kg</td>
-                      <td className="px-3 py-2.5 text-right text-[#C8D4B0]">{o.boeuf} kg</td>
-                      <td className="px-3 py-2.5 text-right text-[#C8D4B0]">{o.gras} kg</td>
+                      <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">
+                        {o.burgers_prevus === 0 ? <span className="text-[#6B7A50]">—</span> : o.burgers_prevus}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-white">
+                        {o.burgers_prevus === 0 ? <span className="text-[#6B7A50]">—</span> : `${fmt1(o.frites_blanchir)} kg`}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-white">
+                        {o.burgers_prevus === 0 ? <span className="text-[#6B7A50]">—</span> : `${fmt1(o.frites_commander)} kg`}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-white">
+                        {o.burgers_prevus === 0 ? <span className="text-[#6B7A50]">—</span> : `${fmt1(o.viande_total)} kg`}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-[#C8D4B0]">
+                        {o.burgers_prevus === 0 ? <span className="text-[#6B7A50]">—</span> : `${fmt1(o.boeuf)} kg`}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-[#C8D4B0]">
+                        {o.burgers_prevus === 0 ? <span className="text-[#6B7A50]">—</span> : `${fmt1(o.gras)} kg`}
+                      </td>
                       <td className="px-3 py-2.5 text-right text-white">{o.buns_commander}</td>
                       <td className="px-3 py-2.5">
-                        <div className="flex gap-2 justify-end">
-                          <button onClick={() => onEdit(o)} className="text-[#C8D4B0] hover:text-[#FF4D8A] text-xs px-2 py-1 rounded-lg border border-[#6B7A50] hover:border-[#FF4D8A]/40 transition-colors">
-                            Modifier
-                          </button>
-                          <button onClick={() => onDelete(o.id)} className="text-[#8BA870] hover:text-red-400 text-xs px-2 py-1 rounded-lg border border-[#6B7A50] hover:border-red-400/40 transition-colors">
-                            ✕
-                          </button>
-                        </div>
+                        {!('isPlaceholder' in o && o.isPlaceholder) && (
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={() => onEdit(o)} className="text-[#C8D4B0] hover:text-[#FF4D8A] text-xs px-2 py-1 rounded-lg border border-[#6B7A50] hover:border-[#FF4D8A]/40 transition-colors">
+                              Modifier
+                            </button>
+                            <button onClick={() => onDelete(o.id)} className="text-[#8BA870] hover:text-red-400 text-xs px-2 py-1 rounded-lg border border-[#6B7A50] hover:border-red-400/40 transition-colors">
+                              ✕
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                     {isExpanded && reception && <ReceptionPanel r={reception} />}
@@ -382,18 +433,22 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete 
               })}
             </tbody>
             <tfoot>
+              {(() => {
+                const real = orders.filter(o => !('isPlaceholder' in o && o.isPlaceholder));
+                const { total, breakdown } = calcCost(real, prices);
+                return (<>
               <tr className="border-t-2 border-[#6B7A50] bg-[#3D4E2B]">
                 <td className="px-4 py-2.5 text-[#F5EFA0] text-xs font-bold uppercase tracking-wider">Total {monthLabel(monthKey)}</td>
-                <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">{orders.reduce((s, o) => s + o.burgers_prevus, 0)}</td>
-                <td className="px-3 py-2.5 text-right text-white font-bold">{orders.reduce((s, o) => s + o.frites_blanchir, 0)} kg</td>
-                <td className="px-3 py-2.5 text-right text-white font-bold">{orders.reduce((s, o) => s + o.frites_commander, 0)} kg</td>
-                <td className="px-3 py-2.5 text-right text-white font-bold">{orders.reduce((s, o) => s + o.viande_total, 0)} kg</td>
-                <td className="px-3 py-2.5 text-right text-[#C8D4B0] font-bold">{orders.reduce((s, o) => s + o.boeuf, 0)} kg</td>
-                <td className="px-3 py-2.5 text-right text-[#C8D4B0] font-bold">{orders.reduce((s, o) => s + o.gras, 0)} kg</td>
-                <td className="px-3 py-2.5 text-right text-white font-bold">{orders.reduce((s, o) => s + o.buns_commander, 0)}</td>
+                <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">{real.reduce((s, o) => s + o.burgers_prevus, 0)}</td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">{fmt1(real.reduce((s, o) => s + o.frites_blanchir, 0))} kg</td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">{fmt1(real.reduce((s, o) => s + o.frites_commander, 0))} kg</td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">{fmt1(real.reduce((s, o) => s + o.viande_total, 0))} kg</td>
+                <td className="px-3 py-2.5 text-right text-[#C8D4B0] font-bold">{fmt1(real.reduce((s, o) => s + o.boeuf, 0))} kg</td>
+                <td className="px-3 py-2.5 text-right text-[#C8D4B0] font-bold">{fmt1(real.reduce((s, o) => s + o.gras, 0))} kg</td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">{real.reduce((s, o) => s + o.buns_commander, 0)}</td>
                 <td></td>
               </tr>
-              {(() => { const { total, breakdown } = calcCost(orders, prices); return total !== null ? (
+              {total !== null ? (
               <tr className="bg-[#2E3D1F] border-t border-[#6B7A50]">
                 <td className="px-4 py-2 text-[#F5EFA0] text-xs font-bold">💶 Coût estimé</td>
                 <td colSpan={7} className="px-3 py-2 text-right">
@@ -401,7 +456,9 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete 
                   <span className="text-[#8BA870] text-xs ml-2">({breakdown})</span>
                 </td>
                 <td></td>
-              </tr>) : null; })()}
+              </tr>) : null}
+              </>);
+              })()}
             </tfoot>
           </table>
         </div>
@@ -456,7 +513,9 @@ export default function HistoriqueSection() {
     setOrders((prev) => prev.filter((o) => o.id !== id));
   };
 
-  const grouped = groupByMonth(orders);
+  const allRows: OrderRow[] = [...buildUpcomingPlaceholders(orders), ...orders]
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const grouped = groupByMonth(allRows);
   const monthKeys = Object.keys(grouped).sort().reverse();
 
   return (
@@ -480,17 +539,17 @@ export default function HistoriqueSection() {
         <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-500 text-sm mb-4">{error}</div>
       )}
 
-      {!loading && !error && orders.length === 0 && (
+
+      {monthKeys.map((key) => (
+        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={handleDelete} />
+      ))}
+      {!loading && !error && orders.length === 0 && allRows.length === 0 && (
         <div className="text-center py-16 text-[#C4A8B5]">
           <p className="text-4xl mb-3">📋</p>
           <p>Aucune commande enregistrée pour l'instant.</p>
           <p className="text-xs mt-2">Les commandes validées sur mobile apparaîtront ici.</p>
         </div>
       )}
-
-      {monthKeys.map((key) => (
-        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={handleDelete} />
-      ))}
 
       {editing && <EditModal order={editing} onSave={handleEdit} onClose={() => setEditing(null)} />}
       {showExport && <ExportModal orders={orders} monthKeys={monthKeys} onClose={() => setShowExport(false)} />}
