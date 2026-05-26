@@ -124,6 +124,7 @@ export default function InventoryScreen({ inventory, onChange, onNext, fixedFrit
           {fixedBuns ? <FixedBadge /> : (
             <NumInput label="Buns restants" value={inventory.bunsRestants} onChange={v => onChange('bunsRestants', v)} step="1" />
           )}
+          <NumInput label="Buns commandés pour J+2" value={inventory.bunsJ2} onChange={v => onChange('bunsJ2', v)} step="1" />
         </Section>
 
         <button onClick={onNext} className="w-full bg-[#FF4D8A] active:bg-[#E03070] text-white text-xl font-bold py-5 rounded-2xl transition-colors">

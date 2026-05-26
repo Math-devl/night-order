@@ -119,7 +119,7 @@ export default function ValidationScreen({ inventory, forecast, orders, settings
 
   const handleValidate = async () => {
     setValidated(true);
-    await saveOrder(inventory, forecast, orders, dayName());
+    await saveOrder(inventory, forecast, orders, dayName(), parseInt(inventory.bunsJ2) || 0);
     setTimeout(onValidated, 2500);
   };
 
@@ -158,8 +158,8 @@ export default function ValidationScreen({ inventory, forecast, orders, settings
           { label: 'Gras', value: `${orders.gras} kg`, sub: `${inventory.pctGras}% gras` },
         ]} />
         <OrderBlock title="Buns" emoji="🍔" lines={[
-          { label: 'En stock', value: `${inventory.bunsRestants || 0}` },
-          { label: 'À commander', value: `${orders.bunsACommander}` },
+          { label: 'En stock ce soir', value: `${inventory.bunsRestants || 0}` },
+          ...(parseInt(inventory.bunsJ2) > 0 ? [{ label: 'Commandés pour J+2', value: `${parseInt(inventory.bunsJ2)}` }] : [{ label: 'Commandés pour J+2', value: '—' }]),
         ]} />
 
         {messages.length > 0 && (

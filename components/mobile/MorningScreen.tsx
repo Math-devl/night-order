@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ReceptionState } from '@/lib/types';
-import { fetchLastOrder, saveReception, DailyOrder } from '@/lib/db';
+import { fetchLastOrder, saveReception, fetchTodayReception, DailyOrder } from '@/lib/db';
 
 interface Props {
   reception: ReceptionState;
@@ -103,15 +103,25 @@ function Section({ title, emoji, children }: { title: string; emoji: string; chi
   );
 }
 
+function todayLabel(): string {
+  const now = new Date();
+  const days = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  return `${days[now.getDay()]} ${dd}/${mm}`;
+}
+
 export default function MorningScreen({ reception, onChange, onSaved }: Props) {
   const [lastOrder, setLastOrder] = useState<DailyOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [alreadyDone, setAlreadyDone] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchLastOrder().then((o) => {
-      setLastOrder(o);
+    Promise.all([fetchLastOrder(), fetchTodayReception()]).then(([order, todayRec]) => {
+      setLastOrder(order);
+      setAlreadyDone(todayRec !== null);
       setLoading(false);
     });
   }, []);
@@ -140,12 +150,16 @@ export default function MorningScreen({ reception, onChange, onSaved }: Props) {
     setTimeout(onSaved, 2000);
   };
 
-  if (saved) {
+  if (saved || alreadyDone) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center">
-        <div className="text-7xl mb-6">📦</div>
-        <h2 className="text-3xl font-bold text-[#1A1209] mb-2">Réception enregistrée !</h2>
-        <p className="text-[#596643]">Les écarts ont été sauvegardés.</p>
+        <div className="text-7xl mb-6">{saved ? '📦' : '✅'}</div>
+        <h2 className="text-3xl font-bold text-[#1A1209] mb-2">
+          {saved ? 'Réception enregistrée !' : 'Livraison déjà checkée'}
+        </h2>
+        <p className="text-[#596643]">
+          {saved ? 'Les écarts ont été sauvegardés.' : `Livraison du ${todayLabel()} déjà enregistrée.`}
+        </p>
       </div>
     );
   }
@@ -153,8 +167,8 @@ export default function MorningScreen({ reception, onChange, onSaved }: Props) {
   return (
     <div className="pb-24">
       <div className="sticky top-0 bg-[#FFF0F5] pt-6 pb-3 px-4 z-10">
-        <h1 className="text-2xl font-bold text-[#1A1209]">Livraison du matin</h1>
-        {loading && <p className="text-[#C4A8B5] text-sm mt-1">Chargement de la dernière commande…</p>}
+        <h1 className="text-2xl font-bold text-[#1A1209]">Livraison du {todayLabel()}</h1>
+        {loading && <p className="text-[#C4A8B5] text-sm mt-1">Chargement…</p>}
         {!loading && lastOrder && (
           <p className="text-[#596643] text-sm mt-1 font-medium">
             Commande du {lastOrder.day_name} — {lastOrder.burgers_prevus} burgers prévus

@@ -5,6 +5,7 @@ export interface InventoryState {
   pctGras: string;
   bunsRestants: string;
   bunsJeter: string;
+  bunsJ2: string;
 }
 
 export interface ForecastState {
