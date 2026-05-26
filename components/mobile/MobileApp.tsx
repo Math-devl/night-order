@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { InventoryState, ForecastState, ReceptionState, Screen, AppSettings } from '@/lib/types';
+import { InventoryState, ForecastState, ReceptionState, Screen, AppSettings, CalculatedOrders } from '@/lib/types';
 import { calculate } from '@/lib/calculations';
 import { fetchAppSettings } from '@/lib/settings';
-import { hasTodayInventoryBeenDone } from '@/lib/db';
+import { hasTodayInventoryBeenDone, fetchLastOrder } from '@/lib/db';
 import { getSession, EmployeeSession } from '@/lib/auth';
 import BottomNav from './BottomNav';
 import InventoryScreen from './InventoryScreen';
@@ -29,11 +29,30 @@ export default function MobileApp() {
   const [reception, setReception] = useState<ReceptionState>(defaultReception);
   const [settings, setSettings] = useState<AppSettings | undefined>(undefined);
   const [inventoryDone, setInventoryDone] = useState(false);
+  const [lastValidatedOrders, setLastValidatedOrders] = useState<CalculatedOrders | null>(null);
+  const [lastValidatedForecast, setLastValidatedForecast] = useState<ForecastState>(defaultForecast);
 
   useEffect(() => {
     setSession(getSession());
     fetchAppSettings().then(setSettings).catch(() => {});
-    hasTodayInventoryBeenDone().then(setInventoryDone).catch(() => {});
+    hasTodayInventoryBeenDone().then(done => {
+      setInventoryDone(done);
+      if (done) {
+        fetchLastOrder().then(order => {
+          if (order) {
+            setLastValidatedForecast({ burgersPrevus: String(order.burgers_prevus) });
+            setLastValidatedOrders({
+              fritesABlanchir: order.frites_blanchir,
+              fritesACommander: order.frites_commander,
+              viandeTotal: order.viande_total,
+              boeuf: order.boeuf,
+              gras: order.gras,
+              bunsACommander: order.buns_commander,
+            });
+          }
+        }).catch(() => {});
+      }
+    }).catch(() => {});
   }, []);
 
   // Tous les hooks doivent être appelés avant tout return conditionnel
@@ -89,11 +108,19 @@ export default function MobileApp() {
       {screen === 'validation' && (
         <ValidationScreen
           inventory={inventory}
-          forecast={forecast}
-          orders={orders}
+          forecast={inventoryDone && lastValidatedOrders ? lastValidatedForecast : forecast}
+          orders={inventoryDone && lastValidatedOrders ? lastValidatedOrders : orders}
           settings={settings}
+          alreadyDone={inventoryDone}
           onBack={() => setScreen('prevision')}
-          onValidated={() => { setInventory(defaultInventory); setForecast(defaultForecast); setInventoryDone(true); setScreen('inventaire'); }}
+          onValidated={() => {
+            setLastValidatedOrders(orders);
+            setLastValidatedForecast(forecast);
+            setInventory(defaultInventory);
+            setForecast(defaultForecast);
+            setInventoryDone(true);
+            setScreen('inventaire');
+          }}
         />
       )}
       {screen === 'livraison' && (
@@ -115,6 +142,7 @@ export default function MobileApp() {
         onChange={setScreen}
         inventoryComplete={inventoryComplete}
         forecastComplete={forecastComplete}
+        inventoryDone={inventoryDone}
       />
     </div>
   );

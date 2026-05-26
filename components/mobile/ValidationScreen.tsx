@@ -9,6 +9,7 @@ interface Props {
   forecast: ForecastState;
   orders: CalculatedOrders;
   settings?: AppSettings;
+  alreadyDone?: boolean;
   onBack: () => void;
   onValidated: () => void;
 }
@@ -91,10 +92,10 @@ function MessageCard({ supplierName, contactType, message }: { supplierName: str
   );
 }
 
-export default function ValidationScreen({ inventory, forecast, orders, settings, onBack, onValidated }: Props) {
+export default function ValidationScreen({ inventory, forecast, orders, settings, alreadyDone, onBack, onValidated }: Props) {
   const [validated, setValidated] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [showMessages, setShowMessages] = useState(false);
+  const [showMessages, setShowMessages] = useState(alreadyDone ?? false);
 
   useEffect(() => { fetchSuppliers().then(setSuppliers).catch(() => {}); }, []);
 
@@ -190,13 +191,21 @@ export default function ValidationScreen({ inventory, forecast, orders, settings
           </>
         )}
 
-        <button
-          onClick={handleValidate}
-          className="w-full bg-[#FF4D8A] active:bg-[#E03070] text-white text-2xl font-bold py-6 rounded-2xl shadow-md shadow-pink-200 transition-all"
-        >
-          ✓ VALIDER LA COMMANDE
-        </button>
-        <p className="text-[#C4A8B5] text-xs text-center mt-3">Enregistre la commande et réinitialise le formulaire.</p>
+        {alreadyDone ? (
+          <div className="w-full bg-green-50 border border-green-300 text-green-700 text-xl font-bold py-5 rounded-2xl text-center">
+            ✓ Commande déjà validée aujourd'hui
+          </div>
+        ) : (
+          <button
+            onClick={handleValidate}
+            className="w-full bg-[#FF4D8A] active:bg-[#E03070] text-white text-2xl font-bold py-6 rounded-2xl shadow-md shadow-pink-200 transition-all"
+          >
+            ✓ VALIDER LA COMMANDE
+          </button>
+        )}
+        <p className="text-[#C4A8B5] text-xs text-center mt-3">
+          {alreadyDone ? 'Consultez les messages fournisseurs ci-dessus.' : 'Enregistre la commande et réinitialise le formulaire.'}
+        </p>
       </div>
     </div>
   );

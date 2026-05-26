@@ -7,6 +7,7 @@ interface Props {
   onChange: (s: Screen) => void;
   inventoryComplete: boolean;
   forecastComplete: boolean;
+  inventoryDone: boolean;
 }
 
 const tabs: { id: Screen; label: string; icon: string }[] = [
@@ -17,11 +18,11 @@ const tabs: { id: Screen; label: string; icon: string }[] = [
   { id: 'compte', label: 'Compte', icon: '👤' },
 ];
 
-export default function BottomNav({ current, onChange, inventoryComplete, forecastComplete }: Props) {
+export default function BottomNav({ current, onChange, inventoryComplete, forecastComplete, inventoryDone }: Props) {
   const isUnlocked = (id: Screen) => {
     if (id === 'inventaire') return true;
-    if (id === 'prevision') return inventoryComplete;
-    if (id === 'validation') return inventoryComplete && forecastComplete;
+    if (id === 'prevision') return true;
+    if (id === 'validation') return (inventoryComplete && forecastComplete) || inventoryDone;
     if (id === 'livraison') return true;
     if (id === 'compte') return true;
     return false;
