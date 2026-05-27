@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Fragment } from 'react';
 import XLSXStyle from 'xlsx-js-style';
-import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, fetchSuppliers, fetchReceptions, updateReception, DailyOrder, MorningReception } from '@/lib/db';
+import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, DailyOrder, MorningReception } from '@/lib/db';
 import { Supplier, Product } from '@/lib/types';
 
 type Prices = { frites: number | null; viande: number | null; buns: number | null };
@@ -562,6 +562,74 @@ function EditReceptionModal({ reception, onSave, onClose }: {
   );
 }
 
+function AddReceptionModal({ order, onSave, onClose }: {
+  order: DailyOrder;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  const [values, setValues] = useState({
+    frites: order.frites_commander,
+    boeuf: order.boeuf,
+    gras: order.gras,
+    buns: order.buns_commander,
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const fields: { key: keyof typeof values; label: string; cmd: number; unit: string }[] = [
+    { key: 'frites', label: 'Frites reçues',  cmd: order.frites_commander, unit: 'kg' },
+    { key: 'boeuf',  label: 'Bœuf reçu',      cmd: order.boeuf,            unit: 'kg' },
+    { key: 'gras',   label: 'Gras reçu',       cmd: order.gras,             unit: 'kg' },
+    { key: 'buns',   label: 'Buns reçus',      cmd: order.buns_commander,   unit: '' },
+  ];
+
+  const handleSave = async () => {
+    setSaving(true);
+    const { error } = await saveReception(order, values);
+    setSaving(false);
+    if (error) { setErr(error); return; }
+    onSave();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#596643] border border-[#6B7A50] rounded-2xl p-6 w-full max-w-md shadow-xl">
+        <h3 className="text-white font-bold text-lg mb-1">Saisir la livraison</h3>
+        <p className="text-[#C8D4B0] text-sm mb-4">{formatDate(order.date)} — {order.burgers_prevus} burgers</p>
+        <div className="space-y-3 mb-5">
+          {fields.map(({ key, label, cmd, unit }) => (
+            <div key={key} className="flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <label className="text-[#C8D4B0] text-sm">{label}</label>
+                <p className="text-[#6B7A50] text-xs">Commandé : {cmd}{unit ? ' ' + unit : ''}</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={values[key]}
+                  onChange={(e) => setValues(v => ({ ...v, [key]: parseFloat(e.target.value) || 0 }))}
+                  className="w-24 bg-[#FFF0F5] text-[#1A1209] text-right rounded-lg px-3 py-1.5 border border-[#496035] focus:border-[#FF4D8A] focus:outline-none text-sm"
+                />
+                {unit && <span className="text-[#8BA870] text-xs w-6">{unit}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+        {err && <p className="text-red-400 text-xs mb-3">{err}</p>}
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-[#6B7A50] text-[#C8D4B0] text-sm font-medium hover:bg-[#496035]">
+            Annuler
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 py-2.5 rounded-xl bg-[#FF4D8A] text-white text-sm font-bold hover:bg-[#E03070] disabled:opacity-50 transition-colors">
+            {saving ? 'Enregistrement…' : '📦 Enregistrer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EcartChip({ value, unit = '' }: { value: number; unit?: string }) {
   const isNeg = value < 0;
   const isZero = value === 0;
@@ -617,7 +685,7 @@ function ReceptionPanel({ r, onEdit }: { r: MorningReception; onEdit: () => void
   );
 }
 
-function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete, onEditReception, onAdd }: {
+function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete, onEditReception, onAddReception, onAdd }: {
   monthKey: string;
   orders: OrderRow[];
   prices: Prices;
@@ -625,6 +693,7 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
   onEdit: (o: DailyOrder) => void;
   onDelete: (id: string) => void;
   onEditReception: (r: MorningReception) => void;
+  onAddReception: (o: DailyOrder) => void;
   onAdd: () => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -683,7 +752,7 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
                               Buns J+2
                             </span>
                           )}
-                          {reception && (
+                          {reception ? (
                             <button
                               onClick={() => setExpandedReception(isExpanded ? null : o.id)}
                               title="Voir la livraison reçue"
@@ -695,7 +764,15 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
                             >
                               📦
                             </button>
-                          )}
+                          ) : (!('isPlaceholder' in o && o.isPlaceholder) && o.burgers_prevus > 0 && (
+                            <button
+                              onClick={() => onAddReception(o)}
+                              title="Saisir la livraison reçue"
+                              className="text-xs px-1.5 py-0.5 rounded-md border border-dashed border-[#6B7A50]/60 text-[#6B7A50] hover:border-[#8BA870] hover:text-[#8BA870] transition-colors"
+                            >
+                              📦
+                            </button>
+                          ))}
                         </div>
                       </td>
                       <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">
@@ -766,6 +843,7 @@ export default function HistoriqueSection() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<DailyOrder | null>(null);
   const [editingReception, setEditingReception] = useState<MorningReception | null>(null);
+  const [addingReception, setAddingReception] = useState<DailyOrder | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
 
@@ -807,6 +885,11 @@ export default function HistoriqueSection() {
     load();
   };
 
+  const handleAddReception = async () => {
+    setAddingReception(null);
+    load();
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Supprimer cette ligne ?')) return;
     await deleteOrder(id);
@@ -841,7 +924,7 @@ export default function HistoriqueSection() {
 
 
       {monthKeys.map((key) => (
-        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={handleDelete} onEditReception={setEditingReception} onAdd={() => setShowAdd(true)} />
+        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={handleDelete} onEditReception={setEditingReception} onAddReception={setAddingReception} onAdd={() => setShowAdd(true)} />
       ))}
       {!loading && !error && orders.length === 0 && allRows.length === 0 && (
         <div className="text-center py-16 text-[#C4A8B5]">
@@ -853,6 +936,7 @@ export default function HistoriqueSection() {
 
       {editing && <EditModal order={editing} onSave={handleEdit} onClose={() => setEditing(null)} />}
       {editingReception && <EditReceptionModal reception={editingReception} onSave={handleEditReception} onClose={() => setEditingReception(null)} />}
+      {addingReception && <AddReceptionModal order={addingReception} onSave={handleAddReception} onClose={() => setAddingReception(null)} />}
       {showExport && <ExportModal orders={orders} monthKeys={monthKeys} receptionsMap={receptionsMap} onClose={() => setShowExport(false)} />}
       {showAdd && <AddOrderModal onSave={() => { setShowAdd(false); load(); }} onClose={() => setShowAdd(false)} />}
     </div>
