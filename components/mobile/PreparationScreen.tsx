@@ -21,7 +21,7 @@ function BigStat({ emoji, label, value, unit }: { emoji: string; label: string; 
 
 export default function PreparationScreen({ orders }: Props) {
   const fritesABlanchir = orders?.fritesABlanchir ?? 0;
-  const boulesViande = orders ? Math.round(orders.viandeTotal / 0.125) : 0;
+  const boulesViande = orders ? Math.round(orders.viandeTotal / 0.0625) : 0;
 
   return (
     <div className="pb-28 px-4">
