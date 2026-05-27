@@ -22,6 +22,10 @@ export interface DailyOrder {
 
 const FR_DAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export async function saveOrder(
   inventory: InventoryState,
   forecast: ForecastState,
@@ -32,7 +36,7 @@ export async function saveOrder(
   // La commande passée le soir de J est enregistrée à J+1 (jour de livraison)
   const delivery = new Date();
   delivery.setDate(delivery.getDate() + 1);
-  const deliveryDate = delivery.toISOString().split('T')[0];
+  const deliveryDate = localDateStr(delivery);
   const deliveryDayName = FR_DAYS[delivery.getDay()];
 
   // Si une ligne pré-commande existe pour J+1 (ex: buns pré-commandés), on la met à jour
@@ -68,7 +72,7 @@ export async function saveOrder(
   if (bunsJ2 > 0) {
     const j2 = new Date();
     j2.setDate(j2.getDate() + 2);
-    const j2Date = j2.toISOString().split('T')[0];
+    const j2Date = localDateStr(j2);
     const j2Day = FR_DAYS[j2.getDay()];
 
     const { data: j2Existing } = await supabase
@@ -151,7 +155,7 @@ export async function saveReception(
   received: { frites: number; boeuf: number; gras: number; buns: number }
 ): Promise<{ error: string | null }> {
   const { error } = await supabase.from('morning_reception').insert({
-    date: new Date().toISOString().split('T')[0],
+    date: localDateStr(new Date()),
     order_id: order.id,
     frites_commander: order.frites_commander,
     viande_boeuf_commande: order.boeuf,
@@ -179,7 +183,7 @@ export async function fetchReceptions(): Promise<MorningReception[]> {
 }
 
 export async function fetchTodayReception(): Promise<MorningReception | null> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr(new Date());
   const { data } = await supabase
     .from('morning_reception')
     .select('*')
@@ -191,7 +195,7 @@ export async function fetchTodayReception(): Promise<MorningReception | null> {
 export async function hasTodayInventoryBeenDone(): Promise<boolean> {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowDate = tomorrow.toISOString().split('T')[0];
+  const tomorrowDate = localDateStr(tomorrow);
   const { data } = await supabase
     .from('daily_orders')
     .select('id')

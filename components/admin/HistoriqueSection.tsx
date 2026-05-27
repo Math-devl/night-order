@@ -33,13 +33,17 @@ type OrderRow = DailyOrder & { isPlaceholder?: boolean };
 
 const FR_DAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function buildUpcomingPlaceholders(orders: DailyOrder[]): OrderRow[] {
   const existingDates = new Set(orders.map(o => o.date));
   const placeholders: OrderRow[] = [];
   for (let offset = 0; offset <= 2; offset++) {
     const d = new Date();
     d.setDate(d.getDate() + offset);
-    const date = d.toISOString().split('T')[0];
+    const date = localDateStr(d);
     if (!existingDates.has(date)) {
       placeholders.push({
         id: `placeholder-${date}`, date,
