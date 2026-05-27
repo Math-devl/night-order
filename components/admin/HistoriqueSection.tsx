@@ -99,34 +99,34 @@ function exportExcel(orders: DailyOrder[], receptionsMap: Record<string, Morning
     .filter(o => o.burgers_prevus > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  const C_DARK = '2E3D1F';
-  const C_MED = '496035';
-  const C_FRITES = '3D5C32';
-  const C_VIANDE = '5C3D3D';
-  const C_BUNS = '5C4F3D';
-  const C_ROW_A = '596643';
-  const C_ROW_B = '4D5A39';
-  const C_WHITE = 'FFFFFF';
-  const C_LIGHT = 'C8D4B0';
-  const C_YELLOW = 'F5EFA0';
-  const C_RED = 'FF4444';
-  const C_DIM = '6B7A50';
-  const C_BORDER = '496035';
+  // En-têtes : rose + kaki comme l'app
+  const C_HDR_KAKI  = '596643';
+  const C_HDR_PINK  = 'FF4D8A';
+  const C_SUBHDR    = '496035';
+  // Lignes de données : claires
+  const C_ROW       = 'FFFFFF';
+  const C_ROW_ALT   = 'F4F4F2';
+  const C_ROW_WE    = 'E8EBE5'; // samedi / dimanche : gris kaki léger
+  // Texte
+  const C_TEXT      = '2A2A2A';
+  const C_TEXT_DIM  = 'AAAAAA';
+  const C_TEXT_HDR  = 'FFFFFF';
+  const C_TEXT_SUB  = 'C8D4B0';
+  const C_RED       = 'CC2222';
+  // Bordures
+  const C_BORD_HDR  = '8BA870';
+  const C_BORD_DATA = 'D4D9CE';
 
-  const border = () => ({
-    top: { style: 'thin', color: { rgb: C_BORDER } },
-    bottom: { style: 'thin', color: { rgb: C_BORDER } },
-    left: { style: 'thin', color: { rgb: C_BORDER } },
-    right: { style: 'thin', color: { rgb: C_BORDER } },
-  });
+  const bdr = (c: string) => ({ style: 'thin', color: { rgb: c } });
+  const border = (c: string) => ({ top: bdr(c), bottom: bdr(c), left: bdr(c), right: bdr(c) });
 
-  const hdrCell = (v: string, bg: string, fontColor: string = C_YELLOW, bold = true) => ({
+  const hdrCell = (v: string, bg: string, fontColor = C_TEXT_HDR, bold = true, sz = 10) => ({
     v, t: 's' as const,
     s: {
       fill: { fgColor: { rgb: bg } },
-      font: { bold, color: { rgb: fontColor }, sz: 10 },
+      font: { bold, color: { rgb: fontColor }, sz },
       alignment: { horizontal: 'center', vertical: 'center' },
-      border: border(),
+      border: border(C_BORD_HDR),
     },
   });
 
@@ -136,7 +136,7 @@ function exportExcel(orders: DailyOrder[], receptionsMap: Record<string, Morning
       fill: { fgColor: { rgb: bg } },
       font: { color: { rgb: fontColor } },
       alignment: { horizontal: align, vertical: 'center' },
-      border: border(),
+      border: border(C_BORD_DATA),
     },
   });
 
@@ -153,50 +153,54 @@ function exportExcel(orders: DailyOrder[], receptionsMap: Record<string, Morning
     { s: { r: 0, c: 6 }, e: { r: 0, c: 7 } },
   ];
 
-  ws['A1'] = hdrCell('Date', C_DARK);
-  ws['B1'] = hdrCell('Jour', C_DARK);
-  ws['C1'] = hdrCell('Frites', C_FRITES);
-  ws['D1'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_FRITES } }, border: border() } };
-  ws['E1'] = hdrCell('Viande', C_VIANDE);
-  ws['F1'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_VIANDE } }, border: border() } };
-  ws['G1'] = hdrCell('Buns', C_BUNS);
-  ws['H1'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_BUNS } }, border: border() } };
+  // Ligne 1 : en-têtes groupes
+  ws['A1'] = hdrCell('Date', C_HDR_KAKI);
+  ws['B1'] = hdrCell('Jour', C_HDR_KAKI);
+  ws['C1'] = hdrCell('Frites', C_HDR_PINK);
+  ws['D1'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_HDR_PINK } }, border: border(C_BORD_HDR) } };
+  ws['E1'] = hdrCell('Viande', C_HDR_PINK);
+  ws['F1'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_HDR_PINK } }, border: border(C_BORD_HDR) } };
+  ws['G1'] = hdrCell('Buns', C_HDR_PINK);
+  ws['H1'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_HDR_PINK } }, border: border(C_BORD_HDR) } };
 
-  ws['A2'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_DARK } }, border: border() } };
-  ws['B2'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_DARK } }, border: border() } };
-  ws['C2'] = hdrCell('Commandé (kg)', C_MED, C_LIGHT, false);
-  ws['D2'] = hdrCell('Livré (kg)', C_MED, C_LIGHT, false);
-  ws['E2'] = hdrCell('Commandé (kg)', C_MED, C_LIGHT, false);
-  ws['F2'] = hdrCell('Livré (kg)', C_MED, C_LIGHT, false);
-  ws['G2'] = hdrCell('Commandé', C_MED, C_LIGHT, false);
-  ws['H2'] = hdrCell('Livré', C_MED, C_LIGHT, false);
+  // Ligne 2 : sous-labels
+  ws['A2'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_HDR_KAKI } }, border: border(C_BORD_HDR) } };
+  ws['B2'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_HDR_KAKI } }, border: border(C_BORD_HDR) } };
+  ws['C2'] = hdrCell('Commandé (kg)', C_SUBHDR, C_TEXT_SUB, false, 9);
+  ws['D2'] = hdrCell('Livré (kg)',    C_SUBHDR, C_TEXT_SUB, false, 9);
+  ws['E2'] = hdrCell('Commandé (kg)', C_SUBHDR, C_TEXT_SUB, false, 9);
+  ws['F2'] = hdrCell('Livré (kg)',    C_SUBHDR, C_TEXT_SUB, false, 9);
+  ws['G2'] = hdrCell('Commandé',     C_SUBHDR, C_TEXT_SUB, false, 9);
+  ws['H2'] = hdrCell('Livré',        C_SUBHDR, C_TEXT_SUB, false, 9);
 
+  // Lignes de données
   dataOrders.forEach((o, idx) => {
     const reception = receptionsMap[o.id];
     const row = idx + 3;
-    const bg = idx % 2 === 0 ? C_ROW_A : C_ROW_B;
+    const isWeekend = o.day_name === 'Samedi' || o.day_name === 'Dimanche';
+    const bg = isWeekend ? C_ROW_WE : idx % 2 === 0 ? C_ROW : C_ROW_ALT;
 
     const d = new Date(o.date + 'T00:00:00');
     const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 
     const fritesLivrees = reception?.frites_recues ?? null;
-    const viandeLivree = reception != null ? reception.viande_recue_boeuf + reception.viande_recue_gras : null;
-    const bunsLivres = reception?.buns_recus ?? null;
+    const viandeLivree  = reception != null ? reception.viande_recue_boeuf + reception.viande_recue_gras : null;
+    const bunsLivres    = reception?.buns_recus ?? null;
 
-    ws[`A${row}`] = dataCell(dateStr, 's', bg, C_LIGHT, 'center');
-    ws[`B${row}`] = dataCell(o.day_name, 's', bg, C_LIGHT, 'left');
-    ws[`C${row}`] = dataCell(o.frites_commander, 'n', bg, C_WHITE);
+    ws[`A${row}`] = dataCell(dateStr,          's', bg, C_TEXT, 'center');
+    ws[`B${row}`] = dataCell(o.day_name,        's', bg, C_TEXT, 'left');
+    ws[`C${row}`] = dataCell(o.frites_commander,'n', bg, C_TEXT);
     ws[`D${row}`] = fritesLivrees !== null
-      ? dataCell(fritesLivrees, 'n', bg, fritesLivrees < o.frites_commander ? C_RED : C_WHITE)
-      : dataCell('—', 's', bg, C_DIM, 'center');
-    ws[`E${row}`] = dataCell(o.viande_total, 'n', bg, C_WHITE);
+      ? dataCell(fritesLivrees, 'n', bg, fritesLivrees < o.frites_commander ? C_RED : C_TEXT)
+      : dataCell('—', 's', bg, C_TEXT_DIM, 'center');
+    ws[`E${row}`] = dataCell(o.viande_total,    'n', bg, C_TEXT);
     ws[`F${row}`] = viandeLivree !== null
-      ? dataCell(viandeLivree, 'n', bg, viandeLivree < o.viande_total ? C_RED : C_WHITE)
-      : dataCell('—', 's', bg, C_DIM, 'center');
-    ws[`G${row}`] = dataCell(o.buns_commander, 'n', bg, C_WHITE);
+      ? dataCell(viandeLivree, 'n', bg, viandeLivree < o.viande_total ? C_RED : C_TEXT)
+      : dataCell('—', 's', bg, C_TEXT_DIM, 'center');
+    ws[`G${row}`] = dataCell(o.buns_commander,  'n', bg, C_TEXT);
     ws[`H${row}`] = bunsLivres !== null
-      ? dataCell(bunsLivres, 'n', bg, bunsLivres < o.buns_commander ? C_RED : C_WHITE)
-      : dataCell('—', 's', bg, C_DIM, 'center');
+      ? dataCell(bunsLivres, 'n', bg, bunsLivres < o.buns_commander ? C_RED : C_TEXT)
+      : dataCell('—', 's', bg, C_TEXT_DIM, 'center');
   });
 
   ws['!ref'] = `A1:H${dataOrders.length + 2}`;
