@@ -241,6 +241,23 @@ export async function fetchTodayReception(): Promise<MorningReception | null> {
   return data ?? null;
 }
 
+export async function hasTodayDeliveryPending(): Promise<boolean> {
+  const today = localDateStr(new Date());
+  const { data: order } = await supabase
+    .from('daily_orders')
+    .select('id')
+    .eq('date', today)
+    .gt('burgers_prevus', 0)
+    .maybeSingle();
+  if (!order) return false;
+  const { data: reception } = await supabase
+    .from('morning_reception')
+    .select('id')
+    .eq('date', today)
+    .maybeSingle();
+  return reception === null;
+}
+
 export async function hasTodayInventoryBeenDone(): Promise<boolean> {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);

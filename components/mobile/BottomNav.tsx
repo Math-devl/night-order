@@ -10,41 +10,40 @@ interface Props {
   inventoryDone: boolean;
 }
 
-const tabs: { id: Screen; label: string; icon: string }[] = [
-  { id: 'inventaire', label: 'Inventaire', icon: '📋' },
-  { id: 'prevision', label: 'Prévision', icon: '🧮' },
-  { id: 'validation', label: 'Valider', icon: '✅' },
-  { id: 'preparation', label: 'Prép.', icon: '🔪' },
-  { id: 'livraison', label: 'Livraison', icon: '📦' },
-  { id: 'compte', label: 'Compte', icon: '👤' },
+const COMMANDE_SCREENS: Screen[] = ['inventaire', 'prevision', 'validation'];
+
+const tabs: { id: string; label: string; icon: string }[] = [
+  { id: 'commande',     label: 'Commande',  icon: '📋' },
+  { id: 'preparation',  label: 'Prépa',     icon: '🔪' },
+  { id: 'livraison',    label: 'Livraison', icon: '📦' },
+  { id: 'compte',       label: 'Compte',    icon: '👤' },
 ];
 
 export default function BottomNav({ current, onChange, inventoryComplete, forecastComplete, inventoryDone }: Props) {
-  const isUnlocked = (id: Screen) => {
-    if (id === 'inventaire') return true;
-    if (id === 'prevision') return true;
-    if (id === 'validation') return (inventoryComplete && forecastComplete) || inventoryDone;
-    if (id === 'preparation') return true;
-    if (id === 'livraison') return true;
-    if (id === 'compte') return true;
-    return false;
+  const isActive = (id: string) => {
+    if (id === 'commande') return COMMANDE_SCREENS.includes(current);
+    return current === id;
+  };
+
+  const handleClick = (id: string) => {
+    if (id === 'commande') {
+      if (COMMANDE_SCREENS.includes(current)) return; // déjà sur une étape commande
+      onChange(inventoryDone ? 'validation' : 'inventaire');
+    } else {
+      onChange(id as Screen);
+    }
   };
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-[#596643] border-t border-[#6B7A50] flex z-50">
       {tabs.map((tab) => {
-        const active = current === tab.id;
-        const unlocked = isUnlocked(tab.id);
+        const active = isActive(tab.id);
         return (
           <button
             key={tab.id}
-            onClick={() => unlocked && onChange(tab.id)}
+            onClick={() => handleClick(tab.id)}
             className={`flex-1 flex flex-col items-center pt-2 pb-4 gap-0.5 transition-colors ${
-              active
-                ? 'text-[#FF4D8A]'
-                : unlocked
-                ? 'text-[#8BA870] active:text-white'
-                : 'text-[#496035] cursor-not-allowed'
+              active ? 'text-[#FF4D8A]' : 'text-[#8BA870] active:text-white'
             }`}
           >
             <span className="text-xl leading-none">{tab.icon}</span>

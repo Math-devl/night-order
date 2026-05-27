@@ -140,7 +140,6 @@ export default function ValidationScreen({ inventory, forecast, orders, settings
       <div className="sticky top-0 bg-[#FFF0F5] pt-6 pb-4 px-4 z-10">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-[#1A1209]">Récapitulatif</h1>
-          <button onClick={onBack} className="text-[#FF4D8A] text-sm font-semibold">← Retour</button>
         </div>
         <p className="text-[#A0909A] text-sm mt-1">
           {dayName()} soir — {burgers} burgers prévus

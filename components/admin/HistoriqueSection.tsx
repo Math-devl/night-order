@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, Fragment } from 'react';
 import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, verifyReception, DailyOrder, MorningReception } from '@/lib/db';
+import { notifyMeatDiscrepancy } from '@/lib/push';
 import { Supplier, Product } from '@/lib/types';
 
 type Prices = { frites: number | null; viande: number | null; buns: number | null };
@@ -590,6 +591,9 @@ function AddReceptionModal({ order, onSave, onClose }: {
     const { error } = await saveReception(order, values);
     setSaving(false);
     if (error) { setErr(error); return; }
+    const d = new Date(order.date + 'T00:00:00');
+    const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    notifyMeatDiscrepancy({ date: dateLabel, boeufCmd: order.boeuf, boeufRecu: values.boeuf, grasCmd: order.gras, grasRecu: values.gras }).catch(() => {});
     onSave();
   };
 
@@ -625,6 +629,24 @@ function AddReceptionModal({ order, onSave, onClose }: {
           <button onClick={handleSave} disabled={saving}
             className="flex-1 py-2.5 rounded-xl bg-[#FF4D8A] text-white text-sm font-bold hover:bg-[#E03070] disabled:opacity-50 transition-colors">
             {saving ? 'Enregistrement…' : '📦 Enregistrer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#596643] border border-[#6B7A50] rounded-2xl p-6 w-full max-w-xs shadow-xl">
+        <p className="text-white text-base font-medium mb-5 text-center">{message}</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-[#6B7A50] text-[#C8D4B0] text-sm font-medium hover:bg-[#496035]">
+            Annuler
+          </button>
+          <button onClick={onConfirm} className="flex-1 py-2.5 rounded-xl bg-[#FF4D8A] hover:bg-[#E03070] text-white text-sm font-bold transition-colors">
+            Supprimer
           </button>
         </div>
       </div>
@@ -801,7 +823,7 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
                             <button onClick={() => onEdit(o)} className="text-[#C8D4B0] hover:text-[#FF4D8A] text-xs px-2 py-1 rounded-lg border border-[#6B7A50] hover:border-[#FF4D8A]/40 transition-colors">
                               Modifier
                             </button>
-                            <button onClick={() => onDelete(o.id)} className="text-[#8BA870] hover:text-red-400 text-xs px-2 py-1 rounded-lg border border-[#6B7A50] hover:border-red-400/40 transition-colors">
+                            <button onClick={() => onDelete(o.id)} className="text-[#8BA870] hover:text-red-400 text-xs px-2 py-1 rounded-lg border border-[#6B7A50] hover:border-red-400/40 transition-colors" title="Supprimer">
                               ✕
                             </button>
                           </div>
@@ -856,6 +878,7 @@ export default function HistoriqueSection() {
   const [addingReception, setAddingReception] = useState<DailyOrder | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -906,7 +929,6 @@ export default function HistoriqueSection() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Supprimer cette ligne ?')) return;
     const { error } = await deleteOrder(id);
     if (error) { alert('Erreur lors de la suppression : ' + error); return; }
     setOrders((prev) => prev.filter((o) => o.id !== id));
@@ -940,7 +962,7 @@ export default function HistoriqueSection() {
 
 
       {monthKeys.map((key) => (
-        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={handleDelete} onEditReception={setEditingReception} onAddReception={setAddingReception} onVerifyReception={handleVerifyReception} onAdd={() => setShowAdd(true)} />
+        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={(id) => setConfirmDelete(id)} onEditReception={setEditingReception} onAddReception={setAddingReception} onVerifyReception={handleVerifyReception} onAdd={() => setShowAdd(true)} />
       ))}
       {!loading && !error && orders.length === 0 && allRows.length === 0 && (
         <div className="text-center py-16 text-[#C4A8B5]">
@@ -955,6 +977,13 @@ export default function HistoriqueSection() {
       {addingReception && <AddReceptionModal order={addingReception} onSave={handleAddReception} onClose={() => setAddingReception(null)} />}
       {showExport && <ExportModal orders={orders} monthKeys={monthKeys} receptionsMap={receptionsMap} onClose={() => setShowExport(false)} />}
       {showAdd && <AddOrderModal onSave={() => { setShowAdd(false); load(); }} onClose={() => setShowAdd(false)} />}
+      {confirmDelete && (
+        <ConfirmModal
+          message="Supprimer cette commande ?"
+          onConfirm={() => { handleDelete(confirmDelete); setConfirmDelete(null); }}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
     </div>
   );
 }

@@ -34,6 +34,15 @@ function ResultCard({ title, emoji, children }: { title: string; emoji: string; 
   );
 }
 
+function tomorrowLabel(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const days = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${days[d.getDay()]} ${dd}/${mm}`;
+}
+
 export default function ForecastScreen({ forecast, onChange, orders, settings, onBack, onNext }: Props) {
   const burgers = parseFloat(forecast.burgersPrevus) || 0;
   const multFrites = settings?.frites.multiplicateur ?? 1;
@@ -46,10 +55,9 @@ export default function ForecastScreen({ forecast, onChange, orders, settings, o
 
   return (
     <div className="pb-24">
-      <div className="sticky top-0 bg-[#FFF0F5] pt-6 pb-4 px-4 z-10">
+      <div className="sticky top-0 bg-[#FFF0F5] pt-4 pb-4 px-4 z-10">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-[#1A1209]">Prévision & Commande</h1>
-          <button onClick={onBack} className="text-[#FF4D8A] text-sm font-semibold">← Retour</button>
+          <h1 className="text-2xl font-bold text-[#1A1209]">Prévision — {tomorrowLabel()}</h1>
         </div>
         {hasMultiplier && (
           <div className="mt-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
@@ -80,10 +88,10 @@ export default function ForecastScreen({ forecast, onChange, orders, settings, o
             <button onClick={() => onChange('burgersPrevus', String(burgers + 10))}
               className="shrink-0 text-[#FF4D8A] text-3xl font-bold px-2 py-1">+</button>
           </div>
-          <div className="flex justify-between mt-3 gap-2">
-            {[50, 80, 100, 120, 150].map((n) => (
+          <div className="grid grid-cols-4 mt-3 gap-2">
+            {[65, 80, 90, 100, 110, 120, 135, 150].map((n) => (
               <button key={n} onClick={() => onChange('burgersPrevus', String(n))}
-                className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${
+                className={`py-2 rounded-xl text-sm font-bold transition-colors ${
                   burgers === n ? 'bg-[#FF4D8A] text-white' : 'bg-[#496035] text-[#C8D4B0] active:bg-[#3D4E2B] border border-[#6B7A50]'
                 }`}>
                 {n}

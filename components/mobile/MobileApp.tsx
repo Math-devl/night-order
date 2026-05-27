@@ -4,9 +4,11 @@ import { useState, useMemo, useEffect } from 'react';
 import { InventoryState, ForecastState, ReceptionState, Screen, AppSettings, CalculatedOrders } from '@/lib/types';
 import { calculate } from '@/lib/calculations';
 import { fetchAppSettings } from '@/lib/settings';
-import { hasTodayInventoryBeenDone, fetchLastOrder } from '@/lib/db';
+import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder } from '@/lib/db';
 import { getSession, EmployeeSession } from '@/lib/auth';
+import { registerPushSubscription } from '@/lib/push';
 import BottomNav from './BottomNav';
+import CommandeSteps from './CommandeSteps';
 import InventoryScreen from './InventoryScreen';
 import ForecastScreen from './ForecastScreen';
 import ValidationScreen from './ValidationScreen';
@@ -22,6 +24,8 @@ const defaultInventory: InventoryState = {
 const defaultForecast: ForecastState = { burgersPrevus: '' };
 const defaultReception: ReceptionState = { fritesRecues: '', viandeRecueBoeuf: '', viandeRecueGras: '', bunsRecus: '' };
 
+const COMMANDE_SCREENS: Screen[] = ['inventaire', 'prevision', 'validation'];
+
 export default function MobileApp() {
   const [session, setSession] = useState<EmployeeSession | null | undefined>(undefined);
   const [screen, setScreen] = useState<Screen>('inventaire');
@@ -34,8 +38,13 @@ export default function MobileApp() {
   const [lastValidatedForecast, setLastValidatedForecast] = useState<ForecastState>(defaultForecast);
 
   useEffect(() => {
-    setSession(getSession());
+    const s = getSession();
+    setSession(s);
+    if (s) registerPushSubscription(s.id).catch(() => {});
     fetchAppSettings().then(setSettings).catch(() => {});
+    hasTodayDeliveryPending().then(pending => {
+      if (pending) setScreen('livraison');
+    }).catch(() => {});
     hasTodayInventoryBeenDone().then(done => {
       setInventoryDone(done);
       if (done) {
@@ -56,7 +65,6 @@ export default function MobileApp() {
     }).catch(() => {});
   }, []);
 
-  // Tous les hooks doivent être appelés avant tout return conditionnel
   const orders = useMemo(() => calculate(inventory, forecast, settings), [inventory, forecast, settings]);
 
   const fritesFixed = settings?.frites.fixedOrder.is_active ?? false;
@@ -76,8 +84,22 @@ export default function MobileApp() {
     return <LoginScreen onLogin={() => setSession(getSession())} />;
   }
 
+  const onCommande = COMMANDE_SCREENS.includes(screen);
+
   return (
     <div className="min-h-screen bg-[#FFF0F5] text-[#1A1209] max-w-lg mx-auto relative">
+
+      {/* Top step nav — visible uniquement dans la section Commande */}
+      {onCommande && (
+        <CommandeSteps
+          current={screen as 'inventaire' | 'prevision' | 'validation'}
+          onChange={setScreen}
+          inventoryComplete={inventoryComplete}
+          forecastComplete={forecastComplete}
+          inventoryDone={inventoryDone}
+        />
+      )}
+
       {screen === 'inventaire' && inventoryDone && (
         <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center">
           <div className="text-7xl mb-6">✅</div>
@@ -120,7 +142,7 @@ export default function MobileApp() {
             setInventory(defaultInventory);
             setForecast(defaultForecast);
             setInventoryDone(true);
-            setScreen('inventaire');
+            setScreen('preparation');
           }}
         />
       )}
