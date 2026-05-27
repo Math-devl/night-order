@@ -2,6 +2,7 @@
 
 import { CalculatedOrders, InventoryState, ForecastState, AppSettings, Supplier, Product, ContactType } from '@/lib/types';
 import { saveOrder, fetchSuppliers } from '@/lib/db';
+import { getSession } from '@/lib/auth';
 import { useState, useEffect } from 'react';
 
 interface Props {
@@ -120,7 +121,13 @@ export default function ValidationScreen({ inventory, forecast, orders, settings
 
   const handleValidate = async () => {
     setValidated(true);
-    await saveOrder(inventory, forecast, orders, dayName(), parseInt(inventory.bunsJ2) || 0);
+    const session = getSession();
+    const result = await saveOrder(inventory, forecast, orders, dayName(), parseInt(inventory.bunsJ2) || 0, session?.id);
+    if (result.error) {
+      setValidated(false);
+      alert(result.error);
+      return;
+    }
     setTimeout(onValidated, 2500);
   };
 

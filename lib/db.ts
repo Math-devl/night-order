@@ -31,68 +31,18 @@ export async function saveOrder(
   forecast: ForecastState,
   orders: CalculatedOrders,
   _dayName: string,
-  bunsJ2: number = 0
+  bunsJ2: number = 0,
+  employeeId?: string
 ): Promise<{ error: string | null }> {
-  // La commande passée le soir de J est enregistrée à J+1 (jour de livraison)
-  const delivery = new Date();
-  delivery.setDate(delivery.getDate() + 1);
-  const deliveryDate = localDateStr(delivery);
-  const deliveryDayName = FR_DAYS[delivery.getDay()];
-
-  // Si une ligne pré-commande existe pour J+1 (ex: buns pré-commandés), on la met à jour
-  const { data: existing } = await supabase
-    .from('daily_orders').select('id, buns_commander').eq('date', deliveryDate).maybeSingle();
-
-  const orderData = {
-    date: deliveryDate,
-    day_name: deliveryDayName,
-    burgers_prevus: parseInt(forecast.burgersPrevus),
-    frites_fraiches: parseFloat(inventory.fritesFraiches) || 0,
-    frites_blanchies: parseFloat(inventory.fritesBlanchies) || 0,
-    boules_restantes: parseInt(inventory.boulesRestantes) || 0,
-    pct_gras: parseFloat(inventory.pctGras) || 26.5,
-    buns_restants: parseInt(inventory.bunsRestants) || 0,
-    frites_blanchir: orders.fritesABlanchir,
-    frites_commander: orders.fritesACommander,
-    viande_total: orders.viandeTotal,
-    boeuf: orders.boeuf,
-    gras: orders.gras,
-    // Les buns se commandent toujours en J+2 — si la ligne J+1 avait déjà des buns pré-commandés, on préserve
-    buns_commander: existing?.buns_commander ?? 0,
-    validated_at: new Date().toISOString(),
-  };
-
-  const { error } = existing
-    ? await supabase.from('daily_orders').update(orderData).eq('id', existing.id)
-    : await supabase.from('daily_orders').insert(orderData);
-
-  if (error) return { error: error.message };
-
-  // Pré-commande J+2
-  if (bunsJ2 > 0) {
-    const j2 = new Date();
-    j2.setDate(j2.getDate() + 2);
-    const j2Date = localDateStr(j2);
-    const j2Day = FR_DAYS[j2.getDay()];
-
-    const { data: j2Existing } = await supabase
-      .from('daily_orders').select('id, burgers_prevus').eq('date', j2Date).maybeSingle();
-
-    if (!j2Existing) {
-      await supabase.from('daily_orders').insert({
-        date: j2Date, day_name: j2Day,
-        burgers_prevus: 0, frites_fraiches: 0, frites_blanchies: 0,
-        boules_restantes: 0, pct_gras: 26.5, buns_restants: 0,
-        frites_blanchir: 0, frites_commander: 0, viande_total: 0,
-        boeuf: 0, gras: 0, buns_commander: bunsJ2,
-        validated_at: new Date().toISOString(),
-      });
-    } else if (j2Existing.burgers_prevus === 0) {
-      // Mise à jour d'une pré-commande existante (pas encore validée)
-      await supabase.from('daily_orders').update({ buns_commander: bunsJ2 }).eq('id', j2Existing.id);
-    }
+  const res = await fetch('/api/save-order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ employeeId, inventory, forecast, orders, bunsJ2 }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    return { error: body.error ?? 'Erreur serveur.' };
   }
-
   return { error: null };
 }
 
