@@ -151,6 +151,7 @@ export async function fetchLastOrder(): Promise<DailyOrder | null> {
   const { data, error } = await supabase
     .from('daily_orders')
     .select('*')
+    .gt('burgers_prevus', 0)
     .order('validated_at', { ascending: false })
     .limit(1)
     .single();
