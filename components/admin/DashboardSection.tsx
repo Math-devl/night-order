@@ -174,10 +174,18 @@ function WeekDetail({ week, orders, prices, onBack }: { week: WeekInfo; orders: 
                     </td>
                     {order ? (
                       <>
-                        <td className="py-2.5 px-3 text-center text-white font-bold text-sm">{order.burgers_prevus}</td>
-                        <td className="py-2.5 px-3 text-center text-[#C8D4B0] text-sm">{order.frites_commander} kg</td>
-                        <td className="py-2.5 px-3 text-center text-[#C8D4B0] text-sm">{order.viande_total} kg</td>
-                        <td className="py-2.5 px-3 text-center text-[#C8D4B0] text-sm">{order.buns_commander}</td>
+                        <td className="py-2.5 px-3 text-center text-white font-bold text-sm">
+                          {order.burgers_prevus > 0 ? order.burgers_prevus : <span className="text-[#496035]">—</span>}
+                        </td>
+                        <td className="py-2.5 px-3 text-center text-[#C8D4B0] text-sm">
+                          {order.burgers_prevus > 0 ? `${order.frites_commander} kg` : <span className="text-[#496035]">—</span>}
+                        </td>
+                        <td className="py-2.5 px-3 text-center text-[#C8D4B0] text-sm">
+                          {order.burgers_prevus > 0 ? `${order.viande_total} kg` : <span className="text-[#496035]">—</span>}
+                        </td>
+                        <td className="py-2.5 px-3 text-center text-[#C8D4B0] text-sm">
+                          {order.buns_commander > 0 ? order.buns_commander : <span className="text-[#496035]">—</span>}
+                        </td>
                       </>
                     ) : isFuture ? (
                       <td colSpan={4} className="py-2.5 px-3 text-[#496035] text-sm text-center italic">—</td>
