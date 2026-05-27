@@ -1,23 +1,50 @@
-export async function registerPushSubscription(employeeId: string): Promise<void> {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+export async function registerServiceWorker(): Promise<void> {
+  if (!('serviceWorker' in navigator)) return;
+  await navigator.serviceWorker.register('/sw.js');
+}
+
+export async function getNotificationPermission(): Promise<NotificationPermission> {
+  if (!('Notification' in window)) return 'denied';
+  return Notification.permission;
+}
+
+export async function enablePushNotifications(employeeId: string): Promise<boolean> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
 
   const reg = await navigator.serviceWorker.ready;
-  const existing = await reg.pushManager.getSubscription();
-  if (existing) {
-    // Déjà abonné — on s'assure que c'est bien enregistré côté serveur
-    await saveSubscription(existing, employeeId);
-    return;
-  }
 
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') return;
+  if (permission !== 'granted') return false;
 
-  const sub = await reg.pushManager.subscribe({
+  const existing = await reg.pushManager.getSubscription();
+  const sub = existing ?? await reg.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
   });
 
   await saveSubscription(sub, employeeId);
+  return true;
+}
+
+export async function registerPushSubscription(employeeId: string): Promise<void> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if (!('Notification' in window)) return;
+
+  await navigator.serviceWorker.register('/sw.js');
+  const reg = await navigator.serviceWorker.ready;
+
+  // Si déjà autorisé, re-sync l'abonnement silencieusement
+  if (Notification.permission === 'granted') {
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) { await saveSubscription(existing, employeeId); return; }
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
+    });
+    await saveSubscription(sub, employeeId);
+  }
+  // Si 'default' → on n'affiche pas la demande automatiquement (iOS l'interdit sans geste)
+  // Le bouton dans CompteScreen prend le relais
 }
 
 async function saveSubscription(sub: PushSubscription, employeeId: string): Promise<void> {

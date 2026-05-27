@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { EmployeeSession, clearSession } from '@/lib/auth';
 import { updateEmployeeCode } from '@/lib/db';
+import { enablePushNotifications, registerServiceWorker } from '@/lib/push';
 
 interface Props {
   session: EmployeeSession;
@@ -17,6 +18,20 @@ export default function CompteScreen({ session, onLogout }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(null);
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  useEffect(() => {
+    registerServiceWorker().catch(() => {});
+    if ('Notification' in window) setNotifPermission(Notification.permission);
+  }, []);
+
+  const handleEnableNotifications = async () => {
+    setNotifLoading(true);
+    await enablePushNotifications(session.id);
+    if ('Notification' in window) setNotifPermission(Notification.permission);
+    setNotifLoading(false);
+  };
 
   const press = async (key: string) => {
     if (saving) return;
@@ -63,6 +78,35 @@ export default function CompteScreen({ session, onLogout }: Props) {
               </div>
               <span className="text-[#FF4D8A]">→</span>
             </a>
+          )}
+
+          {notifPermission !== null && notifPermission !== 'granted' && (
+            <button
+              onClick={handleEnableNotifications}
+              disabled={notifLoading || notifPermission === 'denied'}
+              className="w-full bg-[#596643] border border-[#6B7A50] rounded-2xl p-4 text-left flex items-center justify-between hover:bg-[#496035] transition-colors disabled:opacity-50"
+            >
+              <div>
+                <p className="text-white font-semibold text-sm">
+                  {notifPermission === 'denied' ? '🔕 Notifications bloquées' : '🔔 Activer les notifications'}
+                </p>
+                <p className="text-[#8BA870] text-xs mt-0.5">
+                  {notifPermission === 'denied'
+                    ? 'Autorise-les dans les réglages de ton navigateur'
+                    : notifLoading ? 'En cours…' : 'Recevoir les alertes de livraison'}
+                </p>
+              </div>
+              {notifPermission !== 'denied' && <span className="text-[#8BA870]">→</span>}
+            </button>
+          )}
+          {notifPermission === 'granted' && (
+            <div className="w-full bg-green-500/10 border border-green-400/30 rounded-2xl p-4 flex items-center gap-3">
+              <span className="text-green-400 text-lg">🔔</span>
+              <div>
+                <p className="text-green-400 font-semibold text-sm">Notifications activées</p>
+                <p className="text-[#8BA870] text-xs mt-0.5">Tu recevras les alertes de livraison</p>
+              </div>
+            </div>
           )}
 
           <button onClick={() => setStep('change')}
