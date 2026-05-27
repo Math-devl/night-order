@@ -21,20 +21,32 @@ export async function POST(req: NextRequest) {
 
   console.log('[send-invite] email:', email, '| is_admin:', is_admin);
 
-  // Si admin avec email : créer le compte Supabase Auth et générer le lien
+  // Si admin avec email : générer le lien d'invitation sans envoyer l'email Supabase
   let adminInviteLink: string | null = null;
   if (is_admin && email) {
-    // Invite admin via Supabase (son propre service mail, indépendant de Resend)
-    const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: adminUrl,
+    const { data: linkData, error: inviteError } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'invite',
+      email,
+      options: { redirectTo: adminUrl },
     });
     if (inviteError && inviteError.message.includes('already been registered')) {
-      // Compte existant → envoie un lien de réinitialisation de mot de passe
-      await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo: adminUrl });
+      // Compte existant → générer un lien de réinitialisation de mot de passe
+      const { data: recoveryData, error: recoveryError } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'recovery',
+        email,
+        options: { redirectTo: adminUrl },
+      });
+      if (recoveryError) {
+        console.error('[send-invite] recovery link error:', recoveryError.message);
+      } else {
+        adminInviteLink = recoveryData.properties?.action_link ?? null;
+      }
     } else if (inviteError) {
       console.error('[send-invite] invite error:', inviteError.message);
+    } else {
+      adminInviteLink = linkData.properties?.action_link ?? null;
     }
-    console.log('[send-invite] admin invite sent via Supabase for:', email);
+    console.log('[send-invite] admin link generated for:', email, '| link:', adminInviteLink ? 'ok' : 'null');
   }
 
   const adminSection = adminInviteLink ? `
