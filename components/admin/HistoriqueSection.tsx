@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, Fragment } from 'react';
-import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, DailyOrder, MorningReception } from '@/lib/db';
+import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, verifyReception, DailyOrder, MorningReception } from '@/lib/db';
 import { Supplier, Product } from '@/lib/types';
 
 type Prices = { frites: number | null; viande: number | null; buns: number | null };
@@ -644,7 +644,7 @@ function EcartChip({ value, unit = '' }: { value: number; unit?: string }) {
   );
 }
 
-function ReceptionPanel({ r, onEdit }: { r: MorningReception; onEdit: () => void }) {
+function ReceptionPanel({ r, onEdit, onVerify }: { r: MorningReception; onEdit: () => void; onVerify: () => void }) {
   const rows = [
     { label: 'Frites', cmd: r.frites_commander, recu: r.frites_recues, ecart: r.ecart_frites, unit: ' kg' },
     { label: 'Bœuf',  cmd: r.viande_boeuf_commande, recu: r.viande_recue_boeuf, ecart: r.ecart_boeuf, unit: ' kg' },
@@ -663,9 +663,16 @@ function ReceptionPanel({ r, onEdit }: { r: MorningReception; onEdit: () => void
                 <th className="text-right px-3 py-1.5">Reçu</th>
                 <th className="text-right px-3 py-1.5">Écart</th>
                 <th className="px-3 py-1.5">
-                  <button onClick={onEdit} className="text-[#8BA870] hover:text-[#FF4D8A] border border-[#6B7A50] hover:border-[#FF4D8A]/40 px-2 py-0.5 rounded-md transition-colors">
-                    Modifier
-                  </button>
+                  <div className="flex items-center gap-2 justify-end">
+                    <button onClick={onEdit} className="text-[#8BA870] hover:text-[#FF4D8A] border border-[#6B7A50] hover:border-[#FF4D8A]/40 px-2 py-0.5 rounded-md transition-colors">
+                      Modifier
+                    </button>
+                    {!r.is_verified && (
+                      <button onClick={onVerify} className="text-green-400 hover:text-green-300 border border-green-600/50 hover:border-green-400 px-2 py-0.5 rounded-md transition-colors font-bold">
+                        ✓ Vérifier
+                      </button>
+                    )}
+                  </div>
                 </th>
               </tr>
             </thead>
@@ -687,7 +694,7 @@ function ReceptionPanel({ r, onEdit }: { r: MorningReception; onEdit: () => void
   );
 }
 
-function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete, onEditReception, onAddReception, onAdd }: {
+function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete, onEditReception, onAddReception, onVerifyReception, onAdd }: {
   monthKey: string;
   orders: OrderRow[];
   prices: Prices;
@@ -696,6 +703,7 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
   onDelete: (id: string) => void;
   onEditReception: (r: MorningReception) => void;
   onAddReception: (o: DailyOrder) => void;
+  onVerifyReception: (id: string) => void;
   onAdd: () => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -757,14 +765,14 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
                           {reception ? (
                             <button
                               onClick={() => setExpandedReception(isExpanded ? null : o.id)}
-                              title="Voir la livraison reçue"
+                              title={reception.is_verified ? 'Livraison vérifiée' : 'Voir la livraison reçue'}
                               className={`text-xs px-1.5 py-0.5 rounded-md border transition-colors ${
                                 isExpanded
                                   ? 'bg-[#F5EFA0]/20 border-[#F5EFA0]/50 text-[#F5EFA0]'
                                   : 'border-[#6B7A50] text-[#8BA870] hover:text-[#F5EFA0] hover:border-[#F5EFA0]/50'
                               }`}
                             >
-                              📦
+                              {reception.is_verified ? '✅' : '📦'}
                             </button>
                           ) : (!('isPlaceholder' in o && o.isPlaceholder) && o.burgers_prevus > 0 && (
                             <button
@@ -800,7 +808,7 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
                         )}
                       </td>
                     </tr>
-                    {isExpanded && reception && <ReceptionPanel r={reception} onEdit={() => onEditReception(reception)} />}
+                    {isExpanded && reception && <ReceptionPanel r={reception} onEdit={() => onEditReception(reception)} onVerify={() => onVerifyReception(reception.id)} />}
                   </Fragment>
                 );
               })}
@@ -892,9 +900,15 @@ export default function HistoriqueSection() {
     load();
   };
 
+  const handleVerifyReception = async (id: string) => {
+    await verifyReception(id);
+    load();
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Supprimer cette ligne ?')) return;
-    await deleteOrder(id);
+    const { error } = await deleteOrder(id);
+    if (error) { alert('Erreur lors de la suppression : ' + error); return; }
     setOrders((prev) => prev.filter((o) => o.id !== id));
   };
 
@@ -926,7 +940,7 @@ export default function HistoriqueSection() {
 
 
       {monthKeys.map((key) => (
-        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={handleDelete} onEditReception={setEditingReception} onAddReception={setAddingReception} onAdd={() => setShowAdd(true)} />
+        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={handleDelete} onEditReception={setEditingReception} onAddReception={setAddingReception} onVerifyReception={handleVerifyReception} onAdd={() => setShowAdd(true)} />
       ))}
       {!loading && !error && orders.length === 0 && allRows.length === 0 && (
         <div className="text-center py-16 text-[#C4A8B5]">

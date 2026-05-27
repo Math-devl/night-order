@@ -117,8 +117,13 @@ export async function updateOrder(
 }
 
 export async function deleteOrder(id: string): Promise<{ error: string | null }> {
-  const { error } = await supabase.from('daily_orders').delete().eq('id', id);
-  return { error: error?.message ?? null };
+  const res = await fetch('/api/delete-order', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  const data = await res.json();
+  return { error: data.error ?? null };
 }
 
 export async function insertManualOrder(data: {
@@ -169,6 +174,7 @@ export interface MorningReception {
   ecart_boeuf: number;
   ecart_gras: number;
   ecart_buns: number;
+  is_verified: boolean;
 }
 
 export async function saveReception(
@@ -190,7 +196,13 @@ export async function saveReception(
     ecart_boeuf: received.boeuf - order.boeuf,
     ecart_gras: received.gras - order.gras,
     ecart_buns: received.buns - order.buns_commander,
+    is_verified: true,
   });
+  return { error: error?.message ?? null };
+}
+
+export async function verifyReception(id: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('morning_reception').update({ is_verified: true }).eq('id', id);
   return { error: error?.message ?? null };
 }
 
