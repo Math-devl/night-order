@@ -358,6 +358,16 @@ export async function deleteEmployee(id: string): Promise<void> {
   await supabase.from('employees').delete().eq('id', id);
 }
 
+export async function verifyEmployee(id: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('id', id)
+    .eq('is_active', true)
+    .maybeSingle();
+  return data !== null;
+}
+
 export async function verifyCode(code: string): Promise<Employee | null> {
   const { data } = await supabase
     .from('employees')

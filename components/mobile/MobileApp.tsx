@@ -4,8 +4,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { InventoryState, ForecastState, ReceptionState, Screen, AppSettings, CalculatedOrders } from '@/lib/types';
 import { calculate } from '@/lib/calculations';
 import { fetchAppSettings } from '@/lib/settings';
-import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder } from '@/lib/db';
-import { getSession, EmployeeSession } from '@/lib/auth';
+import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder, verifyEmployee } from '@/lib/db';
+import { getSession, clearSession, EmployeeSession } from '@/lib/auth';
 import { registerPushSubscription } from '@/lib/push';
 import BottomNav from './BottomNav';
 import CommandeSteps from './CommandeSteps';
@@ -39,8 +39,19 @@ export default function MobileApp() {
 
   useEffect(() => {
     const s = getSession();
-    setSession(s);
-    if (s) registerPushSubscription(s.id).catch(() => {});
+    if (s) {
+      verifyEmployee(s.id).then(active => {
+        if (active) {
+          setSession(s);
+          registerPushSubscription(s.id).catch(() => {});
+        } else {
+          clearSession();
+          setSession(null);
+        }
+      }).catch(() => { setSession(s); });
+    } else {
+      setSession(null);
+    }
     fetchAppSettings().then(setSettings).catch(() => {});
     hasTodayDeliveryPending().then(pending => {
       if (pending) setScreen('livraison');
