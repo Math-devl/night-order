@@ -173,6 +173,21 @@ export async function saveReception(
   return { error: error?.message ?? null };
 }
 
+export async function updateReception(
+  id: string,
+  received: { frites_recues: number; viande_recue_boeuf: number; viande_recue_gras: number; buns_recus: number },
+  r: MorningReception
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('morning_reception').update({
+    ...received,
+    ecart_frites: Math.round((received.frites_recues - r.frites_commander) * 10) / 10,
+    ecart_boeuf: Math.round((received.viande_recue_boeuf - r.viande_boeuf_commande) * 10) / 10,
+    ecart_gras: Math.round((received.viande_recue_gras - r.viande_gras_commande) * 10) / 10,
+    ecart_buns: received.buns_recus - r.buns_commander,
+  }).eq('id', id);
+  return { error: error?.message ?? null };
+}
+
 export async function fetchReceptions(): Promise<MorningReception[]> {
   const { data, error } = await supabase
     .from('morning_reception')

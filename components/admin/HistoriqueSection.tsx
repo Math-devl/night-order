@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Fragment } from 'react';
 import * as XLSX from 'xlsx';
-import { fetchOrders, updateOrder, deleteOrder, fetchSuppliers, fetchReceptions, DailyOrder, MorningReception } from '@/lib/db';
+import { fetchOrders, updateOrder, deleteOrder, fetchSuppliers, fetchReceptions, updateReception, DailyOrder, MorningReception } from '@/lib/db';
 import { Supplier, Product } from '@/lib/types';
 
 type Prices = { frites: number | null; viande: number | null; buns: number | null };
@@ -277,6 +277,62 @@ function EditModal({ order, onSave, onClose }: { order: DailyOrder; onSave: (u: 
   );
 }
 
+function EditReceptionModal({ reception, onSave, onClose }: {
+  reception: MorningReception;
+  onSave: (values: { frites_recues: number; viande_recue_boeuf: number; viande_recue_gras: number; buns_recus: number }) => void;
+  onClose: () => void;
+}) {
+  const [values, setValues] = useState({
+    frites_recues: reception.frites_recues,
+    viande_recue_boeuf: reception.viande_recue_boeuf,
+    viande_recue_gras: reception.viande_recue_gras,
+    buns_recus: reception.buns_recus,
+  });
+
+  const fields: { key: keyof typeof values; label: string; cmd: number; unit: string }[] = [
+    { key: 'frites_recues', label: 'Frites reçues', cmd: reception.frites_commander, unit: 'kg' },
+    { key: 'viande_recue_boeuf', label: 'Bœuf reçu', cmd: reception.viande_boeuf_commande, unit: 'kg' },
+    { key: 'viande_recue_gras', label: 'Gras reçu', cmd: reception.viande_gras_commande, unit: 'kg' },
+    { key: 'buns_recus', label: 'Buns reçus', cmd: reception.buns_commander, unit: '' },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#596643] border border-[#6B7A50] rounded-2xl p-6 w-full max-w-md shadow-xl">
+        <h3 className="text-white font-bold text-lg mb-1">Modifier la livraison</h3>
+        <p className="text-[#C8D4B0] text-sm mb-4">{formatDate(reception.date)}</p>
+        <div className="space-y-3 mb-5">
+          {fields.map(({ key, label, cmd, unit }) => (
+            <div key={key} className="flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <label className="text-[#C8D4B0] text-sm">{label}</label>
+                <p className="text-[#6B7A50] text-xs">Commandé : {cmd}{unit ? ' ' + unit : ''}</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={values[key]}
+                  onChange={(e) => setValues(v => ({ ...v, [key]: parseFloat(e.target.value) || 0 }))}
+                  className="w-24 bg-[#FFF0F5] text-[#1A1209] text-right rounded-lg px-3 py-1.5 border border-[#496035] focus:border-[#FF4D8A] focus:outline-none text-sm"
+                />
+                {unit && <span className="text-[#8BA870] text-xs w-6">{unit}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-[#6B7A50] text-[#C8D4B0] text-sm font-medium hover:bg-[#496035]">
+            Annuler
+          </button>
+          <button onClick={() => onSave(values)} className="flex-1 py-2.5 rounded-xl bg-[#FF4D8A] text-white text-sm font-bold hover:bg-[#E03070]">
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EcartChip({ value, unit = '' }: { value: number; unit?: string }) {
   const isNeg = value < 0;
   const isZero = value === 0;
@@ -289,7 +345,7 @@ function EcartChip({ value, unit = '' }: { value: number; unit?: string }) {
   );
 }
 
-function ReceptionPanel({ r }: { r: MorningReception }) {
+function ReceptionPanel({ r, onEdit }: { r: MorningReception; onEdit: () => void }) {
   const rows = [
     { label: 'Frites', cmd: r.frites_commander, recu: r.frites_recues, ecart: r.ecart_frites, unit: ' kg' },
     { label: 'Bœuf',  cmd: r.viande_boeuf_commande, recu: r.viande_recue_boeuf, ecart: r.ecart_boeuf, unit: ' kg' },
@@ -307,6 +363,11 @@ function ReceptionPanel({ r }: { r: MorningReception }) {
                 <th className="text-right px-3 py-1.5">Commandé</th>
                 <th className="text-right px-3 py-1.5">Reçu</th>
                 <th className="text-right px-3 py-1.5">Écart</th>
+                <th className="px-3 py-1.5">
+                  <button onClick={onEdit} className="text-[#8BA870] hover:text-[#FF4D8A] border border-[#6B7A50] hover:border-[#FF4D8A]/40 px-2 py-0.5 rounded-md transition-colors">
+                    Modifier
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -316,6 +377,7 @@ function ReceptionPanel({ r }: { r: MorningReception }) {
                   <td className="px-3 py-1.5 text-right text-[#8BA870]">{row.cmd}{row.unit}</td>
                   <td className="px-3 py-1.5 text-right text-white font-bold">{row.recu}{row.unit}</td>
                   <td className="px-3 py-1.5 text-right"><EcartChip value={row.ecart} unit={row.unit} /></td>
+                  <td></td>
                 </tr>
               ))}
             </tbody>
@@ -326,13 +388,14 @@ function ReceptionPanel({ r }: { r: MorningReception }) {
   );
 }
 
-function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete }: {
+function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete, onEditReception }: {
   monthKey: string;
   orders: OrderRow[];
   prices: Prices;
   receptionsMap: Record<string, MorningReception>;
   onEdit: (o: DailyOrder) => void;
   onDelete: (id: string) => void;
+  onEditReception: (r: MorningReception) => void;
 }) {
   const [open, setOpen] = useState(true);
   const [expandedReception, setExpandedReception] = useState<string | null>(null);
@@ -421,7 +484,7 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete 
                         )}
                       </td>
                     </tr>
-                    {isExpanded && reception && <ReceptionPanel r={reception} />}
+                    {isExpanded && reception && <ReceptionPanel r={reception} onEdit={() => onEditReception(reception)} />}
                   </Fragment>
                 );
               })}
@@ -465,6 +528,7 @@ export default function HistoriqueSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<DailyOrder | null>(null);
+  const [editingReception, setEditingReception] = useState<MorningReception | null>(null);
   const [showExport, setShowExport] = useState(false);
 
   const load = useCallback(async () => {
@@ -495,6 +559,13 @@ export default function HistoriqueSection() {
     if (!editing) return;
     await updateOrder(editing.id, updated);
     setEditing(null);
+    load();
+  };
+
+  const handleEditReception = async (values: { frites_recues: number; viande_recue_boeuf: number; viande_recue_gras: number; buns_recus: number }) => {
+    if (!editingReception) return;
+    await updateReception(editingReception.id, values, editingReception);
+    setEditingReception(null);
     load();
   };
 
@@ -532,7 +603,7 @@ export default function HistoriqueSection() {
 
 
       {monthKeys.map((key) => (
-        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={handleDelete} />
+        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={handleDelete} onEditReception={setEditingReception} />
       ))}
       {!loading && !error && orders.length === 0 && allRows.length === 0 && (
         <div className="text-center py-16 text-[#C4A8B5]">
@@ -543,6 +614,7 @@ export default function HistoriqueSection() {
       )}
 
       {editing && <EditModal order={editing} onSave={handleEdit} onClose={() => setEditing(null)} />}
+      {editingReception && <EditReceptionModal reception={editingReception} onSave={handleEditReception} onClose={() => setEditingReception(null)} />}
       {showExport && <ExportModal orders={orders} monthKeys={monthKeys} onClose={() => setShowExport(false)} />}
     </div>
   );

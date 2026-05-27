@@ -172,15 +172,15 @@ function WeekDetail({ week, orders, prices, onBack }: { week: WeekInfo; orders: 
                       <span className={`font-medium ${isToday ? 'text-[#FF4D8A]' : 'text-[#C8D4B0]'}`}>{dayLabel}</span>
                       {isToday && <span className="ml-1.5 text-[10px] bg-[#FF4D8A]/20 text-[#FF4D8A] border border-[#FF4D8A]/30 px-1.5 py-0.5 rounded-full font-bold">auj.</span>}
                     </td>
-                    {isFuture ? (
-                      <td colSpan={4} className="py-2.5 px-3 text-[#496035] text-sm text-center italic">—</td>
-                    ) : order ? (
+                    {order ? (
                       <>
                         <td className="py-2.5 px-3 text-center text-white font-bold text-sm">{order.burgers_prevus}</td>
                         <td className="py-2.5 px-3 text-center text-[#C8D4B0] text-sm">{order.frites_commander} kg</td>
                         <td className="py-2.5 px-3 text-center text-[#C8D4B0] text-sm">{order.viande_total} kg</td>
                         <td className="py-2.5 px-3 text-center text-[#C8D4B0] text-sm">{order.buns_commander}</td>
                       </>
+                    ) : isFuture ? (
+                      <td colSpan={4} className="py-2.5 px-3 text-[#496035] text-sm text-center italic">—</td>
                     ) : (
                       <td colSpan={4} className="py-2.5 px-3 text-[#496035] text-sm text-center italic">Pas de commande</td>
                     )}
