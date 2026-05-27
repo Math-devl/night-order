@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, Fragment } from 'react';
-import * as XLSX from 'xlsx';
+import XLSXStyle from 'xlsx-js-style';
 import { fetchOrders, updateOrder, deleteOrder, fetchSuppliers, fetchReceptions, updateReception, DailyOrder, MorningReception } from '@/lib/db';
 import { Supplier, Product } from '@/lib/types';
 
@@ -94,29 +94,119 @@ function formatDate(dateStr: string): string {
   return `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function exportExcel(orders: DailyOrder[], label: string) {
-  const rows = orders.map((o) => ({
-    'Date': o.date,
-    'Jour': o.day_name,
-    'Burgers prévus': o.burgers_prevus,
-    'Frites blanchir (kg)': o.frites_blanchir,
-    'Frites commander (kg)': o.frites_commander,
-    'Viande total (kg)': o.viande_total,
-    'Bœuf (kg)': o.boeuf,
-    'Gras (kg)': o.gras,
-    'Buns commandés': o.buns_commander,
-  }));
+function exportExcel(orders: DailyOrder[], receptionsMap: Record<string, MorningReception>, label: string) {
+  const dataOrders = [...orders]
+    .filter(o => o.burgers_prevus > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
 
-  const ws = XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [12, 12, 14, 20, 22, 17, 12, 12, 16].map(w => ({ wch: w }));
+  const C_DARK = '2E3D1F';
+  const C_MED = '496035';
+  const C_FRITES = '3D5C32';
+  const C_VIANDE = '5C3D3D';
+  const C_BUNS = '5C4F3D';
+  const C_ROW_A = '596643';
+  const C_ROW_B = '4D5A39';
+  const C_WHITE = 'FFFFFF';
+  const C_LIGHT = 'C8D4B0';
+  const C_YELLOW = 'F5EFA0';
+  const C_RED = 'FF4444';
+  const C_DIM = '6B7A50';
+  const C_BORDER = '496035';
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Historique');
+  const border = () => ({
+    top: { style: 'thin', color: { rgb: C_BORDER } },
+    bottom: { style: 'thin', color: { rgb: C_BORDER } },
+    left: { style: 'thin', color: { rgb: C_BORDER } },
+    right: { style: 'thin', color: { rgb: C_BORDER } },
+  });
 
-  XLSX.writeFile(wb, `night-order-${label}.xlsx`);
+  const hdrCell = (v: string, bg: string, fontColor: string = C_YELLOW, bold = true) => ({
+    v, t: 's' as const,
+    s: {
+      fill: { fgColor: { rgb: bg } },
+      font: { bold, color: { rgb: fontColor }, sz: 10 },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: border(),
+    },
+  });
+
+  const dataCell = (v: string | number, t: 's' | 'n', bg: string, fontColor: string, align = 'right') => ({
+    v, t,
+    s: {
+      fill: { fgColor: { rgb: bg } },
+      font: { color: { rgb: fontColor } },
+      alignment: { horizontal: align, vertical: 'center' },
+      border: border(),
+    },
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ws: Record<string, any> = {};
+
+  ws['!cols'] = [14, 12, 15, 15, 15, 15, 11, 11].map(w => ({ wch: w }));
+  ws['!rows'] = [{ hpt: 22 }, { hpt: 18 }];
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+    { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
+    { s: { r: 0, c: 2 }, e: { r: 0, c: 3 } },
+    { s: { r: 0, c: 4 }, e: { r: 0, c: 5 } },
+    { s: { r: 0, c: 6 }, e: { r: 0, c: 7 } },
+  ];
+
+  ws['A1'] = hdrCell('Date', C_DARK);
+  ws['B1'] = hdrCell('Jour', C_DARK);
+  ws['C1'] = hdrCell('Frites', C_FRITES);
+  ws['D1'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_FRITES } }, border: border() } };
+  ws['E1'] = hdrCell('Viande', C_VIANDE);
+  ws['F1'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_VIANDE } }, border: border() } };
+  ws['G1'] = hdrCell('Buns', C_BUNS);
+  ws['H1'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_BUNS } }, border: border() } };
+
+  ws['A2'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_DARK } }, border: border() } };
+  ws['B2'] = { v: '', t: 's', s: { fill: { fgColor: { rgb: C_DARK } }, border: border() } };
+  ws['C2'] = hdrCell('Commandé (kg)', C_MED, C_LIGHT, false);
+  ws['D2'] = hdrCell('Livré (kg)', C_MED, C_LIGHT, false);
+  ws['E2'] = hdrCell('Commandé (kg)', C_MED, C_LIGHT, false);
+  ws['F2'] = hdrCell('Livré (kg)', C_MED, C_LIGHT, false);
+  ws['G2'] = hdrCell('Commandé', C_MED, C_LIGHT, false);
+  ws['H2'] = hdrCell('Livré', C_MED, C_LIGHT, false);
+
+  dataOrders.forEach((o, idx) => {
+    const reception = receptionsMap[o.id];
+    const row = idx + 3;
+    const bg = idx % 2 === 0 ? C_ROW_A : C_ROW_B;
+
+    const d = new Date(o.date + 'T00:00:00');
+    const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+
+    const fritesLivrees = reception?.frites_recues ?? null;
+    const viandeLivree = reception != null ? reception.viande_recue_boeuf + reception.viande_recue_gras : null;
+    const bunsLivres = reception?.buns_recus ?? null;
+
+    ws[`A${row}`] = dataCell(dateStr, 's', bg, C_LIGHT, 'center');
+    ws[`B${row}`] = dataCell(o.day_name, 's', bg, C_LIGHT, 'left');
+    ws[`C${row}`] = dataCell(o.frites_commander, 'n', bg, C_WHITE);
+    ws[`D${row}`] = fritesLivrees !== null
+      ? dataCell(fritesLivrees, 'n', bg, fritesLivrees < o.frites_commander ? C_RED : C_WHITE)
+      : dataCell('—', 's', bg, C_DIM, 'center');
+    ws[`E${row}`] = dataCell(o.viande_total, 'n', bg, C_WHITE);
+    ws[`F${row}`] = viandeLivree !== null
+      ? dataCell(viandeLivree, 'n', bg, viandeLivree < o.viande_total ? C_RED : C_WHITE)
+      : dataCell('—', 's', bg, C_DIM, 'center');
+    ws[`G${row}`] = dataCell(o.buns_commander, 'n', bg, C_WHITE);
+    ws[`H${row}`] = bunsLivres !== null
+      ? dataCell(bunsLivres, 'n', bg, bunsLivres < o.buns_commander ? C_RED : C_WHITE)
+      : dataCell('—', 's', bg, C_DIM, 'center');
+  });
+
+  ws['!ref'] = `A1:H${dataOrders.length + 2}`;
+
+  const wb = XLSXStyle.utils.book_new();
+  XLSXStyle.utils.book_append_sheet(wb, ws, 'Historique');
+  XLSXStyle.writeFile(wb, `night-order-${label}.xlsx`);
 }
 
-function ExportModal({ orders, monthKeys, onClose }: { orders: DailyOrder[]; monthKeys: string[]; onClose: () => void }) {
+function ExportModal({ orders, monthKeys, receptionsMap, onClose }: { orders: DailyOrder[]; monthKeys: string[]; receptionsMap: Record<string, MorningReception>; onClose: () => void }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Grouper les mois par année
@@ -157,7 +247,7 @@ function ExportModal({ orders, monthKeys, onClose }: { orders: DailyOrder[]; mon
     const label = selected.size === 0 || selected.size === monthKeys.length
       ? 'historique-complet'
       : Array.from(selected).sort().join('_');
-    exportExcel(toExport, label);
+    exportExcel(toExport, receptionsMap, label);
     onClose();
   }
 
@@ -615,7 +705,7 @@ export default function HistoriqueSection() {
 
       {editing && <EditModal order={editing} onSave={handleEdit} onClose={() => setEditing(null)} />}
       {editingReception && <EditReceptionModal reception={editingReception} onSave={handleEditReception} onClose={() => setEditingReception(null)} />}
-      {showExport && <ExportModal orders={orders} monthKeys={monthKeys} onClose={() => setShowExport(false)} />}
+      {showExport && <ExportModal orders={orders} monthKeys={monthKeys} receptionsMap={receptionsMap} onClose={() => setShowExport(false)} />}
     </div>
   );
 }
