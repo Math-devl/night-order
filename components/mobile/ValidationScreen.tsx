@@ -150,7 +150,6 @@ export default function ValidationScreen({ inventory, forecast, orders, settings
 
       <div className="px-4 pt-2">
         <OrderBlock title="Frites" emoji="🍟" lines={[
-          { label: 'À blanchir ce soir', value: `${orders.fritesABlanchir} kg` },
           { label: 'À commander', value: `${orders.fritesACommander} kg` },
         ]} />
         <OrderBlock title="Viande" emoji="🥩" lines={[

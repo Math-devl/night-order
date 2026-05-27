@@ -21,7 +21,7 @@ export interface CalculatedOrders {
   bunsACommander: number;
 }
 
-export type Screen = 'inventaire' | 'prevision' | 'validation' | 'livraison' | 'compte';
+export type Screen = 'inventaire' | 'prevision' | 'validation' | 'preparation' | 'livraison' | 'compte';
 
 export interface Employee {
   id: string;

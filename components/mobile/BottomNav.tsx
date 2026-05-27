@@ -14,6 +14,7 @@ const tabs: { id: Screen; label: string; icon: string }[] = [
   { id: 'inventaire', label: 'Inventaire', icon: '📋' },
   { id: 'prevision', label: 'Prévision', icon: '🧮' },
   { id: 'validation', label: 'Valider', icon: '✅' },
+  { id: 'preparation', label: 'Prép.', icon: '🔪' },
   { id: 'livraison', label: 'Livraison', icon: '📦' },
   { id: 'compte', label: 'Compte', icon: '👤' },
 ];
@@ -23,6 +24,7 @@ export default function BottomNav({ current, onChange, inventoryComplete, foreca
     if (id === 'inventaire') return true;
     if (id === 'prevision') return true;
     if (id === 'validation') return (inventoryComplete && forecastComplete) || inventoryDone;
+    if (id === 'preparation') return true;
     if (id === 'livraison') return true;
     if (id === 'compte') return true;
     return false;

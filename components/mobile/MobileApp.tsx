@@ -10,6 +10,7 @@ import BottomNav from './BottomNav';
 import InventoryScreen from './InventoryScreen';
 import ForecastScreen from './ForecastScreen';
 import ValidationScreen from './ValidationScreen';
+import PreparationScreen from './PreparationScreen';
 import MorningScreen from './MorningScreen';
 import LoginScreen from './LoginScreen';
 import CompteScreen from './CompteScreen';
@@ -121,6 +122,11 @@ export default function MobileApp() {
             setInventoryDone(true);
             setScreen('inventaire');
           }}
+        />
+      )}
+      {screen === 'preparation' && (
+        <PreparationScreen
+          orders={inventoryDone && lastValidatedOrders ? lastValidatedOrders : (orders.fritesABlanchir > 0 || orders.viandeTotal > 0 ? orders : null)}
         />
       )}
       {screen === 'livraison' && (

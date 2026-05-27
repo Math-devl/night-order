@@ -95,7 +95,6 @@ export default function ForecastScreen({ forecast, onChange, orders, settings, o
         {burgers > 0 && (
           <>
             <ResultCard title="Frites" emoji="🍟">
-              <ResultRow label="À blanchir" value={orders.fritesABlanchir} unit="kg" highlight fixed={fritesFixed} />
               <ResultRow label="À commander" value={orders.fritesACommander} unit="kg" fixed={fritesFixed} />
             </ResultCard>
             <ResultCard title="Viande" emoji="🥩">
