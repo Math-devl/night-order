@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback, Fragment } from 'react';
-import XLSXStyle from 'xlsx-js-style';
 import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, DailyOrder, MorningReception } from '@/lib/db';
 import { Supplier, Product } from '@/lib/types';
 
@@ -94,7 +93,10 @@ function formatDate(dateStr: string): string {
   return `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function exportExcel(orders: DailyOrder[], receptionsMap: Record<string, MorningReception>, label: string) {
+async function exportExcel(orders: DailyOrder[], receptionsMap: Record<string, MorningReception>, label: string) {
+  // Import dynamique : xlsx-js-style accède à `document` au chargement du module,
+  // il ne peut pas être importé au niveau du module sous peine de planter le SSR.
+  const XLSXStyle = (await import('xlsx-js-style')).default;
   const dataOrders = [...orders]
     .filter(o => o.burgers_prevus > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -305,14 +307,14 @@ function ExportModal({ orders, monthKeys, receptionsMap, onClose }: { orders: Da
     setSelected(prev => prev.size === monthKeys.length ? new Set() : new Set(monthKeys));
   }
 
-  function doExport() {
+  async function doExport() {
     const toExport = selected.size === 0 || selected.size === monthKeys.length
       ? orders
       : orders.filter(o => selected.has(o.date.slice(0, 7)));
     const label = selected.size === 0 || selected.size === monthKeys.length
       ? 'historique-complet'
       : Array.from(selected).sort().join('_');
-    exportExcel(toExport, receptionsMap, label);
+    await exportExcel(toExport, receptionsMap, label);
     onClose();
   }
 
