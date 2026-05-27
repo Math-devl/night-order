@@ -121,6 +121,27 @@ export async function deleteOrder(id: string): Promise<{ error: string | null }>
   return { error: error?.message ?? null };
 }
 
+export async function insertManualOrder(data: {
+  date: string;
+  burgers_prevus: number;
+  frites_commander: number;
+  viande_total: number;
+  boeuf: number;
+  gras: number;
+  buns_commander: number;
+}): Promise<{ error: string | null }> {
+  const d = new Date(data.date + 'T00:00:00');
+  const pctGras = data.viande_total > 0 ? Math.round(data.gras / data.viande_total * 1000) / 10 : 26.5;
+  const { error } = await supabase.from('daily_orders').insert({
+    ...data,
+    day_name: FR_DAYS[d.getDay()],
+    frites_fraiches: 0, frites_blanchies: 0, boules_restantes: 0,
+    pct_gras: pctGras, buns_restants: 0, frites_blanchir: 0,
+    validated_at: new Date().toISOString(),
+  });
+  return { error: error?.message ?? null };
+}
+
 export async function fetchLastOrder(): Promise<DailyOrder | null> {
   const { data, error } = await supabase
     .from('daily_orders')

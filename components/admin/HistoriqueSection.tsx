@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Fragment } from 'react';
 import XLSXStyle from 'xlsx-js-style';
-import { fetchOrders, updateOrder, deleteOrder, fetchSuppliers, fetchReceptions, updateReception, DailyOrder, MorningReception } from '@/lib/db';
+import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, fetchSuppliers, fetchReceptions, updateReception, DailyOrder, MorningReception } from '@/lib/db';
 import { Supplier, Product } from '@/lib/types';
 
 type Prices = { frites: number | null; viande: number | null; buns: number | null };
@@ -393,6 +393,80 @@ function ExportModal({ orders, monthKeys, receptionsMap, onClose }: { orders: Da
   );
 }
 
+function AddOrderModal({ onSave, onClose }: { onSave: () => void; onClose: () => void }) {
+  const today = localDateStr(new Date());
+  const [date, setDate] = useState(today);
+  const [values, setValues] = useState({ burgers_prevus: '', frites_commander: '', viande_total: '', pct_gras: '26.5', buns_commander: '' });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const set = (k: keyof typeof values) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setValues(v => ({ ...v, [k]: e.target.value }));
+
+  const handleSave = async () => {
+    const burgers = parseInt(values.burgers_prevus);
+    const frites  = parseFloat(values.frites_commander);
+    const viande  = parseFloat(values.viande_total);
+    const pct     = parseFloat(values.pct_gras) || 26.5;
+    const buns    = parseInt(values.buns_commander);
+    if (!date || [burgers, frites, viande, buns].some(n => isNaN(n))) {
+      setErr('Tous les champs sont requis.'); return;
+    }
+    const gras  = Math.round(viande * pct / 100 * 10) / 10;
+    const boeuf = Math.round((viande - gras) * 10) / 10;
+    setSaving(true);
+    const { error } = await insertManualOrder({ date, burgers_prevus: burgers, frites_commander: frites, viande_total: viande, boeuf, gras, buns_commander: buns });
+    setSaving(false);
+    if (error) { setErr(error); return; }
+    onSave();
+  };
+
+  const fields: { key: keyof typeof values; label: string; unit?: string; type?: string }[] = [
+    { key: 'burgers_prevus',  label: 'Burgers prévus' },
+    { key: 'frites_commander', label: 'Frites commandées', unit: 'kg' },
+    { key: 'viande_total',    label: 'Viande totale',     unit: 'kg' },
+    { key: 'pct_gras',        label: '% gras',            unit: '%' },
+    { key: 'buns_commander',  label: 'Buns commandés' },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#596643] border border-[#6B7A50] rounded-2xl p-6 w-full max-w-md shadow-xl">
+        <h3 className="text-white font-bold text-lg mb-1">Ajouter une commande</h3>
+        <p className="text-[#C8D4B0] text-sm mb-4">Saisie manuelle</p>
+        <div className="space-y-3 mb-5">
+          <div className="flex items-center justify-between gap-4">
+            <label className="text-[#C8D4B0] text-sm flex-1">Date</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="w-40 bg-[#FFF0F5] text-[#1A1209] text-right rounded-lg px-3 py-1.5 border border-[#496035] focus:border-[#FF4D8A] focus:outline-none text-sm" />
+          </div>
+          {fields.map(({ key, label, unit }) => (
+            <div key={key} className="flex items-center justify-between gap-4">
+              <label className="text-[#C8D4B0] text-sm flex-1">{label}</label>
+              <div className="flex items-center gap-1">
+                <input type="number" value={values[key]} onChange={set(key)}
+                  className="w-24 bg-[#FFF0F5] text-[#1A1209] text-right rounded-lg px-3 py-1.5 border border-[#496035] focus:border-[#FF4D8A] focus:outline-none text-sm"
+                  placeholder="0" />
+                {unit && <span className="text-[#8BA870] text-xs w-6">{unit}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+        {err && <p className="text-red-400 text-xs mb-3">{err}</p>}
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-[#6B7A50] text-[#C8D4B0] text-sm font-medium hover:bg-[#496035]">
+            Annuler
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 py-2.5 rounded-xl bg-[#FF4D8A] text-white text-sm font-bold hover:bg-[#E03070] disabled:opacity-50 transition-colors">
+            {saving ? 'Enregistrement…' : '+ Ajouter'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EditModal({ order, onSave, onClose }: { order: DailyOrder; onSave: (u: Partial<DailyOrder>) => void; onClose: () => void }) {
   const [values, setValues] = useState<Partial<DailyOrder>>({});
 
@@ -543,7 +617,7 @@ function ReceptionPanel({ r, onEdit }: { r: MorningReception; onEdit: () => void
   );
 }
 
-function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete, onEditReception }: {
+function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete, onEditReception, onAdd }: {
   monthKey: string;
   orders: OrderRow[];
   prices: Prices;
@@ -551,6 +625,7 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
   onEdit: (o: DailyOrder) => void;
   onDelete: (id: string) => void;
   onEditReception: (r: MorningReception) => void;
+  onAdd: () => void;
 }) {
   const [open, setOpen] = useState(true);
   const [expandedReception, setExpandedReception] = useState<string | null>(null);
@@ -578,7 +653,14 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
                 <th className="text-right px-3 py-2.5">Frites cmd</th>
                 <th className="text-right px-3 py-2.5">Viande</th>
                 <th className="text-right px-3 py-2.5">Buns</th>
-                <th className="px-3 py-2.5"></th>
+                <th className="px-3 py-2.5 text-right">
+                  <button
+                    onClick={onAdd}
+                    className="bg-[#FF4D8A] hover:bg-[#E03070] text-white text-xs font-bold px-2.5 py-1 rounded-lg transition-colors normal-case tracking-normal"
+                  >
+                    + Ajouter
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -685,6 +767,7 @@ export default function HistoriqueSection() {
   const [editing, setEditing] = useState<DailyOrder | null>(null);
   const [editingReception, setEditingReception] = useState<MorningReception | null>(null);
   const [showExport, setShowExport] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -758,7 +841,7 @@ export default function HistoriqueSection() {
 
 
       {monthKeys.map((key) => (
-        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={handleDelete} onEditReception={setEditingReception} />
+        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={handleDelete} onEditReception={setEditingReception} onAdd={() => setShowAdd(true)} />
       ))}
       {!loading && !error && orders.length === 0 && allRows.length === 0 && (
         <div className="text-center py-16 text-[#C4A8B5]">
@@ -771,6 +854,7 @@ export default function HistoriqueSection() {
       {editing && <EditModal order={editing} onSave={handleEdit} onClose={() => setEditing(null)} />}
       {editingReception && <EditReceptionModal reception={editingReception} onSave={handleEditReception} onClose={() => setEditingReception(null)} />}
       {showExport && <ExportModal orders={orders} monthKeys={monthKeys} receptionsMap={receptionsMap} onClose={() => setShowExport(false)} />}
+      {showAdd && <AddOrderModal onSave={() => { setShowAdd(false); load(); }} onClose={() => setShowAdd(false)} />}
     </div>
   );
 }
