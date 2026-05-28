@@ -779,11 +779,6 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
                               À venir
                             </span>
                           )}
-                          {!('isPlaceholder' in o && o.isPlaceholder) && o.burgers_prevus === 0 && (
-                            <span className="text-[10px] bg-[#F5EFA0]/20 text-[#F5EFA0] border border-[#F5EFA0]/40 px-1.5 py-0.5 rounded-full font-bold">
-                              Buns J+2
-                            </span>
-                          )}
                           {reception ? (
                             <button
                               onClick={() => setExpandedReception(isExpanded ? null : o.id)}
