@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? (host ? `${proto}://${host}` : req.nextUrl.origin);
   const mobileUrl = `${appUrl}/mobile`;
   const adminUrl = `${appUrl}/admin`;
+  const adminSetupUrl = `${appUrl}/admin/setup`;
 
   console.log('[send-invite] email:', email, '| is_admin:', is_admin);
 
@@ -29,14 +30,14 @@ export async function POST(req: NextRequest) {
     const { data: linkData, error: inviteError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'invite',
       email,
-      options: { redirectTo: adminUrl },
+      options: { redirectTo: adminSetupUrl },
     });
     if (inviteError && inviteError.message.includes('already been registered')) {
       // Compte existant → générer un lien de réinitialisation de mot de passe
       const { data: recoveryData, error: recoveryError } = await supabaseAdmin.auth.admin.generateLink({
         type: 'recovery',
         email,
-        options: { redirectTo: adminUrl },
+        options: { redirectTo: adminSetupUrl },
       });
       if (recoveryError) {
         console.error('[send-invite] recovery link error:', recoveryError.message);
