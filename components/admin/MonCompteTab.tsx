@@ -68,12 +68,36 @@ export default function MonCompteTab() {
     }
   };
 
+  const [testResult, setTestResult] = useState<string | null>(null);
+
   const handleEnableNotifications = async () => {
     if (!employeeId) return;
     setNotifLoading(true);
     await enablePushNotifications(employeeId);
     if ('Notification' in window) setNotifPermission(Notification.permission);
     setNotifLoading(false);
+  };
+
+  const handleTestNotification = async () => {
+    setTestResult('Envoi…');
+    try {
+      const res = await fetch('/api/push/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: '🔔 Test notification', body: 'Ça fonctionne !' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setTestResult(`Erreur : ${data.error}`);
+      } else if (data.sent === 0) {
+        setTestResult('Envoyé mais 0 abonnés trouvés — active les notifications d\'abord.');
+      } else {
+        setTestResult(`✓ Envoyé à ${data.sent} appareil(s)`);
+      }
+    } catch (e) {
+      setTestResult(`Erreur réseau : ${(e as Error).message}`);
+    }
+    setTimeout(() => setTestResult(null), 5000);
   };
 
   return (
@@ -175,19 +199,26 @@ export default function MonCompteTab() {
 
       {/* Notifications */}
       {notifPermission !== null && (
-        <div className="bg-[#596643] border border-[#6B7A50] rounded-2xl p-5">
-          <h3 className="text-white font-bold mb-3">Notifications</h3>
+        <div className="bg-[#596643] border border-[#6B7A50] rounded-2xl p-5 space-y-3">
+          <h3 className="text-white font-bold">Notifications</h3>
           {notifPermission === 'granted' ? (
             <div className="flex items-center gap-2 text-green-400 text-sm">
-              <span>🔔</span> Notifications activées
+              <span>🔔</span> Activées sur cet appareil
             </div>
           ) : notifPermission === 'denied' ? (
-            <p className="text-[#8BA870] text-sm">🔕 Notifications bloquées — autorise-les dans les réglages de ton navigateur.</p>
+            <p className="text-[#8BA870] text-sm">🔕 Bloquées — autorise-les dans les réglages de ton navigateur.</p>
           ) : (
             <button onClick={handleEnableNotifications} disabled={notifLoading || !employeeId}
               className="w-full text-left text-[#C8D4B0] text-sm bg-[#496035] rounded-xl px-4 py-3 hover:bg-[#3D4E2B] transition-colors flex items-center justify-between disabled:opacity-50">
-              {notifLoading ? 'En cours…' : '🔔 Activer les notifications'} <span className="text-[#8BA870]">→</span>
+              {notifLoading ? 'En cours…' : '🔔 Activer les notifications sur cet appareil'} <span className="text-[#8BA870]">→</span>
             </button>
+          )}
+          <button onClick={handleTestNotification}
+            className="w-full text-left text-[#C8D4B0] text-sm bg-[#496035] rounded-xl px-4 py-3 hover:bg-[#3D4E2B] transition-colors flex items-center justify-between">
+            Envoyer une notification test <span className="text-[#8BA870]">→</span>
+          </button>
+          {testResult && (
+            <p className={`text-sm ${testResult.startsWith('✓') ? 'text-green-400' : 'text-yellow-400'}`}>{testResult}</p>
           )}
         </div>
       )}
