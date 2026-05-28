@@ -15,7 +15,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Paramètres manquants.' }, { status: 400 });
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? '';
+  const proto = req.headers.get('x-forwarded-proto') ?? 'https';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? (host ? `${proto}://${host}` : req.nextUrl.origin);
   const mobileUrl = `${appUrl}/mobile`;
   const adminUrl = `${appUrl}/admin`;
 
