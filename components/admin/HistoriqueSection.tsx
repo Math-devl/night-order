@@ -63,7 +63,8 @@ function buildUpcomingPlaceholders(orders: DailyOrder[]): OrderRow[] {
 const EDITABLE_FIELDS: { key: EditableField; label: string; unit?: string }[] = [
   { key: 'burgers_prevus', label: 'Burgers prévus' },
   { key: 'frites_commander', label: 'Frites à commander', unit: 'kg' },
-  { key: 'viande_total', label: 'Viande totale', unit: 'kg' },
+  { key: 'boeuf', label: 'Bœuf à commander', unit: 'kg' },
+  { key: 'gras', label: 'Gras à commander', unit: 'kg' },
   { key: 'buns_commander', label: 'Buns commandés' },
 ];
 
@@ -923,11 +924,15 @@ export default function HistoriqueSection() {
 
   const handleEdit = async (updated: Partial<DailyOrder>) => {
     if (!editing) return;
+    const merged = { ...editing, ...updated };
+    // Recalculer viande_total si boeuf ou gras ont changé
+    if (updated.boeuf !== undefined || updated.gras !== undefined) {
+      updated.viande_total = Math.round((merged.boeuf + merged.gras) * 1000) / 1000;
+    }
     await updateOrder(editing.id, updated);
-    // Si une réception existe pour cette commande, resynchroniser les quantités commandées
+    // Resynchroniser les quantités commandées dans la réception si elle existe
     const reception = receptionsMap[editing.id];
     if (reception) {
-      const merged = { ...editing, ...updated };
       await syncReceptionCommanded(reception, {
         frites_commander: merged.frites_commander,
         boeuf: merged.boeuf,
