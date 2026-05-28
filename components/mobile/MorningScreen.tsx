@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ReceptionState } from '@/lib/types';
 import { fetchLastOrder, saveReception, fetchTodayReception, DailyOrder } from '@/lib/db';
-import { notifyMeatDiscrepancy } from '@/lib/push';
+import { notifyDeliveryDiscrepancy } from '@/lib/push';
 
 interface Props {
   reception: ReceptionState;
@@ -150,7 +150,13 @@ export default function MorningScreen({ reception, onChange, onSaved }: Props) {
     });
     const today = new Date();
     const dateLabel = `${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}`;
-    notifyMeatDiscrepancy({ date: dateLabel, boeufCmd: lastOrder.boeuf, boeufRecu: boeuf, grasCmd: lastOrder.gras, grasRecu: gras }).catch(() => {});
+    notifyDeliveryDiscrepancy({
+      date: dateLabel,
+      fritesCmd: lastOrder.frites_commander, fritesRecues: parseFloat(reception.fritesRecues) || 0,
+      boeufCmd: lastOrder.boeuf, boeufRecu: boeuf,
+      grasCmd: lastOrder.gras,  grasRecu: gras,
+      bunsCmd: lastOrder.buns_commander, bunsRecus: parseInt(reception.bunsRecus) || 0,
+    }).catch(() => {});
     setSaved(true);
     setTimeout(onSaved, 2000);
   };

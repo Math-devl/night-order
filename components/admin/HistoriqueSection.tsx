@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Fragment } from 'react';
 import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, verifyReception, DailyOrder, MorningReception } from '@/lib/db';
-import { notifyMeatDiscrepancy } from '@/lib/push';
+import { notifyDeliveryDiscrepancy } from '@/lib/push';
 import { Supplier, Product } from '@/lib/types';
 
 type Prices = { frites: number | null; viande: number | null; buns: number | null };
@@ -593,7 +593,13 @@ function AddReceptionModal({ order, onSave, onClose }: {
     if (error) { setErr(error); return; }
     const d = new Date(order.date + 'T00:00:00');
     const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
-    notifyMeatDiscrepancy({ date: dateLabel, boeufCmd: order.boeuf, boeufRecu: values.boeuf, grasCmd: order.gras, grasRecu: values.gras }).catch(() => {});
+    notifyDeliveryDiscrepancy({
+      date: dateLabel,
+      fritesCmd: order.frites_commander, fritesRecues: values.frites,
+      boeufCmd: order.boeuf, boeufRecu: values.boeuf,
+      grasCmd: order.gras,   grasRecu: values.gras,
+      bunsCmd: order.buns_commander, bunsRecus: values.buns,
+    }).catch(() => {});
     onSave();
   };
 

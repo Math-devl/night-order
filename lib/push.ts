@@ -64,26 +64,52 @@ function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
   return arr.buffer;
 }
 
+export async function notifyDeliveryDiscrepancy(params: {
+  date: string;
+  fritesCmd: number; fritesRecues: number;
+  boeufCmd: number;  boeufRecu: number;
+  grasCmd: number;   grasRecu: number;
+  bunsCmd: number;   bunsRecus: number;
+}): Promise<void> {
+  const { date, fritesCmd, fritesRecues, boeufCmd, boeufRecu, grasCmd, grasRecu, bunsCmd, bunsRecus } = params;
+
+  const ecartFrites = Math.round((fritesRecues - fritesCmd) * 10) / 10;
+  const ecartBoeuf  = Math.round((boeufRecu - boeufCmd) * 1000) / 1000;
+  const ecartGras   = Math.round((grasRecu  - grasCmd)  * 1000) / 1000;
+  const ecartBuns   = bunsRecus - bunsCmd;
+
+  const hasFrites = Math.abs(ecartFrites) > 0.1;
+  const hasBoeuf  = Math.abs(ecartBoeuf)  > 0.05;
+  const hasGras   = Math.abs(ecartGras)   > 0.05;
+  const hasBuns   = Math.abs(ecartBuns)   >= 1;
+
+  if (!hasFrites && !hasBoeuf && !hasGras && !hasBuns) return;
+
+  const fmt = (v: number) => (v > 0 ? '+' : '') + v;
+  const lines: string[] = [];
+  if (hasFrites) lines.push(`Frites : commandé ${fritesCmd} kg → reçu ${fritesRecues} kg (${fmt(ecartFrites)} kg)`);
+  if (hasBoeuf)  lines.push(`Bœuf : commandé ${boeufCmd} kg → reçu ${boeufRecu} kg (${fmt(ecartBoeuf)} kg)`);
+  if (hasGras)   lines.push(`Gras : commandé ${grasCmd} kg → reçu ${grasRecu} kg (${fmt(ecartGras)} kg)`);
+  if (hasBuns)   lines.push(`Buns : commandé ${bunsCmd} → reçu ${bunsRecus} (${fmt(ecartBuns)})`);
+
+  await fetch('/api/push/notify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: `⚠️ Écart livraison — ${date}`, body: lines.join('\n') }),
+  });
+}
+
+/** @deprecated use notifyDeliveryDiscrepancy */
 export async function notifyMeatDiscrepancy(params: {
   date: string;
   boeufCmd: number; boeufRecu: number;
   grasCmd: number;  grasRecu: number;
 }): Promise<void> {
-  const { date, boeufCmd, boeufRecu, grasCmd, grasRecu } = params;
-  const ecartBoeuf = Math.round((boeufRecu - boeufCmd) * 1000) / 1000;
-  const ecartGras  = Math.round((grasRecu  - grasCmd)  * 1000) / 1000;
-
-  const hasBoeuf = Math.abs(ecartBoeuf) > 0.05;
-  const hasGras  = Math.abs(ecartGras)  > 0.05;
-  if (!hasBoeuf && !hasGras) return;
-
-  const lines: string[] = [`⚠️ Écart viande — livraison du ${date}`];
-  if (hasBoeuf) lines.push(`Bœuf : commandé ${boeufCmd} kg → reçu ${boeufRecu} kg (${ecartBoeuf > 0 ? '+' : ''}${ecartBoeuf} kg)`);
-  if (hasGras)  lines.push(`Gras : commandé ${grasCmd} kg → reçu ${grasRecu} kg (${ecartGras > 0 ? '+' : ''}${ecartGras} kg)`);
-
-  await fetch('/api/push/notify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: '⚠️ Écart livraison viande', body: lines.slice(1).join('\n') }),
+  await notifyDeliveryDiscrepancy({
+    date: params.date,
+    fritesCmd: 0, fritesRecues: 0,
+    boeufCmd: params.boeufCmd, boeufRecu: params.boeufRecu,
+    grasCmd: params.grasCmd, grasRecu: params.grasRecu,
+    bunsCmd: 0, bunsRecus: 0,
   });
 }
