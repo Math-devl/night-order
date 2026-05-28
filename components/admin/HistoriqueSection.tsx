@@ -915,6 +915,15 @@ export default function HistoriqueSection() {
   const handleEditReception = async (values: { frites_recues: number; viande_recue_boeuf: number; viande_recue_gras: number; buns_recus: number }) => {
     if (!editingReception) return;
     await updateReception(editingReception.id, values, editingReception);
+    const d = new Date(editingReception.date + 'T00:00:00');
+    const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    notifyDeliveryDiscrepancy({
+      date: dateLabel,
+      fritesCmd: editingReception.frites_commander, fritesRecues: values.frites_recues,
+      boeufCmd: editingReception.viande_boeuf_commande, boeufRecu: values.viande_recue_boeuf,
+      grasCmd: editingReception.viande_gras_commande,  grasRecu: values.viande_recue_gras,
+      bunsCmd: editingReception.buns_commander, bunsRecus: values.buns_recus,
+    }).catch(() => {});
     setEditingReception(null);
     load();
   };
