@@ -38,6 +38,18 @@ export default function MobileApp() {
   const [lastValidatedForecast, setLastValidatedForecast] = useState<ForecastState>(defaultForecast);
 
   useEffect(() => {
+    // Check for pending notification redirect (set by SW notificationclick)
+    if ('caches' in window) {
+      caches.open('__notif_redirect__').then(async (cache) => {
+        const res = await cache.match('target');
+        if (res) {
+          const url = await res.text();
+          await cache.delete('target');
+          window.location.href = url;
+        }
+      }).catch(() => {});
+    }
+
     const s = getSession();
     if (s) {
       verifyEmployee(s.id).then(active => {
