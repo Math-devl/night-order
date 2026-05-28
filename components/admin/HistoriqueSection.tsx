@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, verifyReception, DailyOrder, MorningReception } from '@/lib/db';
+import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, verifyReception, syncReceptionCommanded, DailyOrder, MorningReception } from '@/lib/db';
 import { notifyDeliveryDiscrepancy } from '@/lib/push';
 import { Supplier, Product } from '@/lib/types';
 
@@ -924,6 +924,17 @@ export default function HistoriqueSection() {
   const handleEdit = async (updated: Partial<DailyOrder>) => {
     if (!editing) return;
     await updateOrder(editing.id, updated);
+    // Si une réception existe pour cette commande, resynchroniser les quantités commandées
+    const reception = receptionsMap[editing.id];
+    if (reception) {
+      const merged = { ...editing, ...updated };
+      await syncReceptionCommanded(reception, {
+        frites_commander: merged.frites_commander,
+        boeuf: merged.boeuf,
+        gras: merged.gras,
+        buns_commander: merged.buns_commander,
+      });
+    }
     setEditing(null);
     load();
   };
