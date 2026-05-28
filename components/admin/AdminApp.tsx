@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AdminLoginScreen from './AdminLoginScreen';
 import HistoriqueSection from './HistoriqueSection';
@@ -12,7 +13,9 @@ import MonCompteTab from './MonCompteTab';
 type AdminTab = 'dashboard' | 'historique' | 'employes' | 'parametres' | 'compte';
 
 export default function AdminApp() {
-  const [tab, setTab] = useState<AdminTab>('historique');
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get('tab') as AdminTab) || 'historique';
+  const [tab, setTab] = useState<AdminTab>(initialTab);
   const [session, setSession] = useState<'loading' | 'loggedIn' | 'loggedOut'>('loading');
 
   useEffect(() => {

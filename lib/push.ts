@@ -66,12 +66,13 @@ function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
 
 export async function notifyDeliveryDiscrepancy(params: {
   date: string;
+  isoDate?: string;
   fritesCmd: number; fritesRecues: number;
   boeufCmd: number;  boeufRecu: number;
   grasCmd: number;   grasRecu: number;
   bunsCmd: number;   bunsRecus: number;
 }): Promise<void> {
-  const { date, fritesCmd, fritesRecues, boeufCmd, boeufRecu, grasCmd, grasRecu, bunsCmd, bunsRecus } = params;
+  const { date, isoDate, fritesCmd, fritesRecues, boeufCmd, boeufRecu, grasCmd, grasRecu, bunsCmd, bunsRecus } = params;
 
   const ecartFrites = Math.round((fritesRecues - fritesCmd) * 10) / 10;
   const ecartBoeuf  = Math.round((boeufRecu - boeufCmd) * 1000) / 1000;
@@ -92,10 +93,11 @@ export async function notifyDeliveryDiscrepancy(params: {
   if (hasGras)   lines.push(`Gras : commandé ${grasCmd} kg → reçu ${grasRecu} kg (${fmt(ecartGras)} kg)`);
   if (hasBuns)   lines.push(`Buns : commandé ${bunsCmd} → reçu ${bunsRecus} (${fmt(ecartBuns)})`);
 
+  const url = isoDate ? `/admin?tab=historique&date=${isoDate}` : '/admin?tab=historique';
   await fetch('/api/push/notify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: `⚠️ Écart livraison — ${date}`, body: lines.join('\n') }),
+    body: JSON.stringify({ title: `⚠️ Écart livraison — ${date}`, body: lines.join('\n'), url }),
   });
 }
 

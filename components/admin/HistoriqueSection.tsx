@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, Fragment } from 'react';
+import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, verifyReception, DailyOrder, MorningReception } from '@/lib/db';
 import { notifyDeliveryDiscrepancy } from '@/lib/push';
 import { Supplier, Product } from '@/lib/types';
@@ -595,6 +596,7 @@ function AddReceptionModal({ order, onSave, onClose }: {
     const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
     notifyDeliveryDiscrepancy({
       date: dateLabel,
+      isoDate: order.date,
       fritesCmd: order.frites_commander, fritesRecues: values.frites,
       boeufCmd: order.boeuf, boeufRecu: values.boeuf,
       grasCmd: order.gras,   grasRecu: values.gras,
@@ -722,11 +724,12 @@ function ReceptionPanel({ r, onEdit, onVerify }: { r: MorningReception; onEdit: 
   );
 }
 
-function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete, onEditReception, onAddReception, onVerifyReception, onAdd }: {
+function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete, onEditReception, onAddReception, onVerifyReception, onAdd, highlightDate }: {
   monthKey: string;
   orders: OrderRow[];
   prices: Prices;
   receptionsMap: Record<string, MorningReception>;
+  highlightDate?: string | null;
   onEdit: (o: DailyOrder) => void;
   onDelete: (id: string) => void;
   onEditReception: (r: MorningReception) => void;
@@ -776,7 +779,7 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
                 const isExpanded = expandedReception === o.id;
                 return (
                   <Fragment key={o.id}>
-                    <tr className={`border-t border-[#6B7A50] ${'isPlaceholder' in o && o.isPlaceholder ? 'bg-[#3D4E2B]/60 opacity-60' : i % 2 === 0 ? 'bg-[#596643]' : 'bg-[#4D5A39]'} hover:bg-[#496035] transition-colors`}>
+                    <tr data-date={o.date} className={`border-t border-[#6B7A50] ${'isPlaceholder' in o && o.isPlaceholder ? 'bg-[#3D4E2B]/60 opacity-60' : highlightDate === o.date ? 'bg-[#FF4D8A]/20 border-l-4 border-l-[#FF4D8A]' : i % 2 === 0 ? 'bg-[#596643]' : 'bg-[#4D5A39]'} hover:bg-[#496035] transition-colors`}>
                       <td className="px-4 py-2.5 text-white font-medium whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           {formatDate(o.date)}
@@ -869,6 +872,9 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
 }
 
 export default function HistoriqueSection() {
+  const searchParams = useSearchParams();
+  const highlightDate = searchParams.get('date') ?? null;
+
   const [orders, setOrders] = useState<DailyOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [receptionsMap, setReceptionsMap] = useState<Record<string, MorningReception>>({});
@@ -880,6 +886,7 @@ export default function HistoriqueSection() {
   const [showExport, setShowExport] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const didScrollRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -905,6 +912,15 @@ export default function HistoriqueSection() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!highlightDate || loading || didScrollRef.current) return;
+    const el = document.querySelector(`[data-date="${highlightDate}"]`);
+    if (el) {
+      didScrollRef.current = true;
+      setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+    }
+  }, [highlightDate, loading]);
+
   const handleEdit = async (updated: Partial<DailyOrder>) => {
     if (!editing) return;
     await updateOrder(editing.id, updated);
@@ -919,6 +935,7 @@ export default function HistoriqueSection() {
     const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
     notifyDeliveryDiscrepancy({
       date: dateLabel,
+      isoDate: editingReception.date,
       fritesCmd: editingReception.frites_commander, fritesRecues: values.frites_recues,
       boeufCmd: editingReception.viande_boeuf_commande, boeufRecu: values.viande_recue_boeuf,
       grasCmd: editingReception.viande_gras_commande,  grasRecu: values.viande_recue_gras,
@@ -972,7 +989,7 @@ export default function HistoriqueSection() {
 
 
       {monthKeys.map((key) => (
-        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} onEdit={setEditing} onDelete={(id) => setConfirmDelete(id)} onEditReception={setEditingReception} onAddReception={setAddingReception} onVerifyReception={handleVerifyReception} onAdd={() => setShowAdd(true)} />
+        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} highlightDate={highlightDate} onEdit={setEditing} onDelete={(id) => setConfirmDelete(id)} onEditReception={setEditingReception} onAddReception={setAddingReception} onVerifyReception={handleVerifyReception} onAdd={() => setShowAdd(true)} />
       ))}
       {!loading && !error && orders.length === 0 && allRows.length === 0 && (
         <div className="text-center py-16 text-[#C4A8B5]">
