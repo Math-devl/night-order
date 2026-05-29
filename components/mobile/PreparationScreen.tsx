@@ -146,8 +146,6 @@ export default function PreparationScreen({ orders, preparationDate }: Props) {
       )}
 
       <div className="mt-6">
-        <h2 className="text-base font-bold text-[#1A1209] mb-1">Tâches du matin</h2>
-
         {fixedTasks.map((task, i) => (
           <TaskRow key={task} text={task} done={fixedDone[i] ?? false} onToggle={() => toggleFixed(i)} />
         ))}
