@@ -127,7 +127,9 @@ export default function PreparationScreen({ orders, preparationDate }: Props) {
     <div className="pb-28 px-4">
       <div className="pt-6 pb-4">
         <h1 className="text-2xl font-bold text-[#1A1209]">Préparation</h1>
-        <p className="text-[#A0909A] text-sm mt-1">{subtitle}</p>
+        {preparationDate && (
+          <p className="text-[#A0909A] text-sm mt-1">{subtitle}</p>
+        )}
       </div>
 
       {!orders || (fritesABlanchir === 0 && boulesViande === 0) ? (
@@ -144,15 +146,7 @@ export default function PreparationScreen({ orders, preparationDate }: Props) {
       )}
 
       <div className="mt-6">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-base font-bold text-[#1A1209]">Tâches du soir</h2>
-          <button
-            onClick={() => setAdding(true)}
-            className="w-8 h-8 rounded-full bg-[#596643] text-white flex items-center justify-center text-xl font-bold leading-none"
-          >
-            +
-          </button>
-        </div>
+        <h2 className="text-base font-bold text-[#1A1209] mb-1">Tâches du soir</h2>
 
         {fixedTasks.length === 0 && customTasks.length === 0 && !adding && (
           <p className="text-[#A0909A] text-sm mt-3">Aucune tâche fixe pour ce soir.</p>
@@ -177,6 +171,17 @@ export default function PreparationScreen({ orders, preparationDate }: Props) {
             />
             <button onClick={addTask} className="px-4 py-2 bg-[#596643] text-white rounded-xl text-sm font-semibold">OK</button>
             <button onClick={() => { setAdding(false); setNewTaskText(''); }} className="px-3 py-2 text-[#A0909A] text-sm">✕</button>
+          </div>
+        )}
+
+        {!adding && (
+          <div className="flex justify-center mt-4">
+            <button
+              onClick={() => setAdding(true)}
+              className="text-[#C4688A] text-3xl font-light leading-none"
+            >
+              +
+            </button>
           </div>
         )}
       </div>
