@@ -36,6 +36,7 @@ export default function MobileApp() {
   const [inventoryDone, setInventoryDone] = useState(false);
   const [lastValidatedOrders, setLastValidatedOrders] = useState<CalculatedOrders | null>(null);
   const [lastValidatedForecast, setLastValidatedForecast] = useState<ForecastState>(defaultForecast);
+  const [preparationDate, setPreparationDate] = useState<string | null>(null);
 
   useEffect(() => {
     // Check for pending notification redirect (set by SW notificationclick)
@@ -82,6 +83,7 @@ export default function MobileApp() {
               gras: order.gras,
               bunsACommander: order.buns_commander,
             });
+            setPreparationDate(order.date);
           }
         }).catch(() => {});
       }
@@ -165,6 +167,9 @@ export default function MobileApp() {
             setInventory(defaultInventory);
             setForecast(defaultForecast);
             setInventoryDone(true);
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            setPreparationDate(`${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`);
             setScreen('preparation');
           }}
         />
@@ -172,6 +177,7 @@ export default function MobileApp() {
       {screen === 'preparation' && (
         <PreparationScreen
           orders={inventoryDone && lastValidatedOrders ? lastValidatedOrders : (orders.fritesABlanchir > 0 || orders.viandeTotal > 0 ? orders : null)}
+          preparationDate={preparationDate}
         />
       )}
       {screen === 'livraison' && (
