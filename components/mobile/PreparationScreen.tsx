@@ -146,11 +146,7 @@ export default function PreparationScreen({ orders, preparationDate }: Props) {
       )}
 
       <div className="mt-6">
-        <h2 className="text-base font-bold text-[#1A1209] mb-1">Tâches du soir</h2>
-
-        {fixedTasks.length === 0 && customTasks.length === 0 && !adding && (
-          <p className="text-[#A0909A] text-sm mt-3">Aucune tâche fixe pour ce soir.</p>
-        )}
+        <h2 className="text-base font-bold text-[#1A1209] mb-1">Tâches du matin</h2>
 
         {fixedTasks.map((task, i) => (
           <TaskRow key={task} text={task} done={fixedDone[i] ?? false} onToggle={() => toggleFixed(i)} />
@@ -178,9 +174,9 @@ export default function PreparationScreen({ orders, preparationDate }: Props) {
           <div className="flex justify-center mt-4">
             <button
               onClick={() => setAdding(true)}
-              className="text-[#C4688A] text-3xl font-light leading-none"
+              className="text-pink-500 text-base font-semibold flex items-center gap-1"
             >
-              +
+              <span className="text-xl leading-none">+</span> Ajouter une tâche
             </button>
           </div>
         )}
