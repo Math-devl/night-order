@@ -32,9 +32,10 @@ export function calculate(
     fritesABlanchir = 0;
     fritesACommander = settings.frites.fixedOrder.qty_today;
   } else {
-    const besoin = plafond(burgers * 80 / 1500 * 5, 5) * multFrites;
-    fritesABlanchir = round(Math.max(0, besoin - fritesBlanchies));
-    fritesACommander = round(Math.max(0, besoin - fritesBlanchies - fritesFraiches + margeFrites));
+    const besoinBase = plafond(burgers * 80 / 1500 * 5, 5);
+    const besoinCommande = besoinBase * multFrites;
+    fritesABlanchir = round(Math.max(0, besoinBase - fritesBlanchies));
+    fritesACommander = round(Math.max(0, besoinCommande - fritesBlanchies - fritesFraiches + margeFrites));
   }
 
   // Viande
