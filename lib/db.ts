@@ -247,29 +247,35 @@ export interface PrepTask {
 }
 
 export async function fetchPrepTasks(date: string): Promise<PrepTask[]> {
-  const { data } = await supabase
-    .from('prep_tasks')
-    .select('id, date, text, done')
-    .eq('date', date)
-    .order('created_at');
-  return (data ?? []) as PrepTask[];
+  const res = await fetch(`/api/prep-tasks?date=${encodeURIComponent(date)}`);
+  if (!res.ok) return [];
+  return res.json();
 }
 
 export async function insertPrepTask(date: string, text: string): Promise<PrepTask | null> {
-  const { data } = await supabase
-    .from('prep_tasks')
-    .insert({ date, text, done: false })
-    .select('id, date, text, done')
-    .single();
-  return data ?? null;
+  const res = await fetch('/api/prep-tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date, text }),
+  });
+  if (!res.ok) return null;
+  return res.json();
 }
 
 export async function togglePrepTask(id: string, done: boolean): Promise<void> {
-  await supabase.from('prep_tasks').update({ done }).eq('id', id);
+  await fetch('/api/prep-tasks', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, done }),
+  });
 }
 
 export async function deletePrepTask(id: string): Promise<void> {
-  await supabase.from('prep_tasks').delete().eq('id', id);
+  await fetch('/api/prep-tasks', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
 }
 
 // ─── Suppliers ───────────────────────────────────────────────────────────────

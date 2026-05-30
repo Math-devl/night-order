@@ -46,7 +46,13 @@ export default function MobileApp() {
         if (res) {
           const url = await res.text();
           await cache.delete('target');
-          window.location.href = url;
+          const parsed = new URL(url, window.location.origin);
+          if (parsed.pathname === '/mobile') {
+            const screenParam = parsed.searchParams.get('screen') as Screen | null;
+            if (screenParam) setScreen(screenParam);
+          } else {
+            window.location.href = url;
+          }
         }
       }).catch(() => {});
     }

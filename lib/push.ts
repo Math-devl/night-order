@@ -108,7 +108,7 @@ export async function notifyNewPrepTask(taskText: string, excludeEmployeeId?: st
     body: JSON.stringify({
       title: '📋 Nouvelle tâche préparation',
       body: taskText,
-      url: '/mobile',
+      url: '/mobile?screen=preparation',
       target: 'all',
       excludeEmployee: excludeEmployeeId,
     }),

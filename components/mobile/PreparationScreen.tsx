@@ -89,10 +89,14 @@ export default function PreparationScreen({ orders, preparationDate, employeeId 
     setFixedDone(new Array(fixedTasks.length).fill(false));
   }, [fixedStorageKey]);
 
-  // Custom tasks: synced with Supabase
+  // Custom tasks: synced via API, refresh on mount and on app foreground
   useEffect(() => {
     if (!preparationDate) { setCustomTasks([]); return; }
-    fetchPrepTasks(preparationDate).then(setCustomTasks).catch(() => {});
+    const load = () => fetchPrepTasks(preparationDate).then(setCustomTasks).catch(() => {});
+    load();
+    const onVisible = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [preparationDate]);
 
   const toggleFixed = (i: number) => {
