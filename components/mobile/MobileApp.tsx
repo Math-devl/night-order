@@ -71,21 +71,26 @@ export default function MobileApp() {
     }).catch(() => {});
     hasTodayInventoryBeenDone().then(done => {
       setInventoryDone(done);
-      if (done) {
-        fetchLastOrder().then(order => {
-          if (order) {
-            setLastValidatedForecast({ burgersPrevus: String(order.burgers_prevus) });
-            setLastValidatedOrders({
-              fritesABlanchir: order.frites_blanchir,
-              fritesACommander: order.frites_commander,
-              viandeTotal: order.viande_total,
-              boeuf: order.boeuf,
-              gras: order.gras,
-              bunsACommander: order.buns_commander,
-            });
-            setPreparationDate(order.date);
-          }
-        }).catch(() => {});
+    }).catch(() => {});
+
+    fetchLastOrder().then(order => {
+      if (order) {
+        const fmt = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        const todayStr = fmt(new Date());
+        const tmrw = new Date(); tmrw.setDate(tmrw.getDate() + 1);
+        const tomorrowStr = fmt(tmrw);
+        if (order.date === todayStr || order.date === tomorrowStr) {
+          setLastValidatedForecast({ burgersPrevus: String(order.burgers_prevus) });
+          setLastValidatedOrders({
+            fritesABlanchir: order.frites_blanchir,
+            fritesACommander: order.frites_commander,
+            viandeTotal: order.viande_total,
+            boeuf: order.boeuf,
+            gras: order.gras,
+            bunsACommander: order.buns_commander,
+          });
+          setPreparationDate(order.date);
+        }
       }
     }).catch(() => {});
   }, []);
@@ -176,7 +181,7 @@ export default function MobileApp() {
       )}
       {screen === 'preparation' && (
         <PreparationScreen
-          orders={inventoryDone && lastValidatedOrders ? lastValidatedOrders : (orders.fritesABlanchir > 0 || orders.viandeTotal > 0 ? orders : null)}
+          orders={lastValidatedOrders ?? null}
           preparationDate={preparationDate}
         />
       )}
