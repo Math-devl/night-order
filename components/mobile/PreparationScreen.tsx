@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { CalculatedOrders } from '@/lib/types';
 import { notifyNewPrepTask } from '@/lib/push';
+import { fetchPrepTasks, insertPrepTask, togglePrepTask, deletePrepTask, PrepTask } from '@/lib/db';
 
 interface Props {
   orders: CalculatedOrders | null;
@@ -67,59 +68,61 @@ export default function PreparationScreen({ orders, preparationDate, employeeId 
 
   const dayOfWeek = preparationDate ? parseDateLocal(preparationDate).getDay() : null;
   const fixedTasks = dayOfWeek !== null ? (WEEKLY_TASKS[dayOfWeek] ?? []) : [];
-  const storageKey = preparationDate ? `prep_tasks_${preparationDate}` : null;
+  const fixedStorageKey = preparationDate ? `prep_fixed_${preparationDate}` : null;
 
   const [fixedDone, setFixedDone] = useState<boolean[]>([]);
-  const [customTasks, setCustomTasks] = useState<{ text: string; done: boolean }[]>([]);
+  const [customTasks, setCustomTasks] = useState<PrepTask[]>([]);
   const [newTaskText, setNewTaskText] = useState('');
   const [adding, setAdding] = useState(false);
 
+  // Fixed tasks: done state stays in localStorage (per device)
   useEffect(() => {
-    const saved = storageKey ? localStorage.getItem(storageKey) : null;
+    const saved = fixedStorageKey ? localStorage.getItem(fixedStorageKey) : null;
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        const fd: boolean[] = parsed.fixedDone ?? [];
+        const fd: boolean[] = JSON.parse(saved);
         while (fd.length < fixedTasks.length) fd.push(false);
         setFixedDone(fd);
-        setCustomTasks(parsed.customTasks ?? []);
         return;
       } catch { /* fall through */ }
     }
     setFixedDone(new Array(fixedTasks.length).fill(false));
-    setCustomTasks([]);
-  }, [storageKey]);
+  }, [fixedStorageKey]);
 
-  const persist = (fd: boolean[], ct: { text: string; done: boolean }[]) => {
-    if (storageKey) localStorage.setItem(storageKey, JSON.stringify({ fixedDone: fd, customTasks: ct }));
-  };
+  // Custom tasks: synced with Supabase
+  useEffect(() => {
+    if (!preparationDate) { setCustomTasks([]); return; }
+    fetchPrepTasks(preparationDate).then(setCustomTasks).catch(() => {});
+  }, [preparationDate]);
 
   const toggleFixed = (i: number) => {
     const next = fixedDone.map((v, j) => j === i ? !v : v);
     setFixedDone(next);
-    persist(next, customTasks);
+    if (fixedStorageKey) localStorage.setItem(fixedStorageKey, JSON.stringify(next));
   };
 
-  const toggleCustom = (i: number) => {
-    const next = customTasks.map((t, j) => j === i ? { ...t, done: !t.done } : t);
-    setCustomTasks(next);
-    persist(fixedDone, next);
+  const toggleCustom = (task: PrepTask) => {
+    setCustomTasks(prev => prev.map(t => t.id === task.id ? { ...t, done: !t.done } : t));
+    togglePrepTask(task.id, !task.done).catch(() => {
+      setCustomTasks(prev => prev.map(t => t.id === task.id ? { ...t, done: task.done } : t));
+    });
   };
 
-  const deleteCustom = (i: number) => {
-    const next = customTasks.filter((_, j) => j !== i);
-    setCustomTasks(next);
-    persist(fixedDone, next);
+  const deleteCustom = (task: PrepTask) => {
+    setCustomTasks(prev => prev.filter(t => t.id !== task.id));
+    deletePrepTask(task.id).catch(() => {
+      setCustomTasks(prev => [...prev, task]);
+    });
   };
 
   const addTask = () => {
-    if (!newTaskText.trim()) { setAdding(false); return; }
+    if (!newTaskText.trim() || !preparationDate) { setAdding(false); return; }
     const taskText = newTaskText.trim();
-    const next = [...customTasks, { text: taskText, done: false }];
-    setCustomTasks(next);
-    persist(fixedDone, next);
     setNewTaskText('');
     setAdding(false);
+    insertPrepTask(preparationDate, taskText).then(task => {
+      if (task) setCustomTasks(prev => [...prev, task]);
+    }).catch(() => {});
     notifyNewPrepTask(taskText, employeeId).catch(() => {});
   };
 
@@ -153,8 +156,8 @@ export default function PreparationScreen({ orders, preparationDate, employeeId 
         {fixedTasks.map((task, i) => (
           <TaskRow key={task} text={task} done={fixedDone[i] ?? false} onToggle={() => toggleFixed(i)} />
         ))}
-        {customTasks.map((task, i) => (
-          <TaskRow key={i} text={task.text} done={task.done} onToggle={() => toggleCustom(i)} onDelete={() => deleteCustom(i)} />
+        {customTasks.map(task => (
+          <TaskRow key={task.id} text={task.text} done={task.done} onToggle={() => toggleCustom(task)} onDelete={() => deleteCustom(task)} />
         ))}
 
         {adding && (

@@ -237,6 +237,41 @@ export async function hasTodayInventoryBeenDone(): Promise<boolean> {
   return data !== null;
 }
 
+// ─── Prep tasks ──────────────────────────────────────────────────────────────
+
+export interface PrepTask {
+  id: string;
+  date: string;
+  text: string;
+  done: boolean;
+}
+
+export async function fetchPrepTasks(date: string): Promise<PrepTask[]> {
+  const { data } = await supabase
+    .from('prep_tasks')
+    .select('id, date, text, done')
+    .eq('date', date)
+    .order('created_at');
+  return (data ?? []) as PrepTask[];
+}
+
+export async function insertPrepTask(date: string, text: string): Promise<PrepTask | null> {
+  const { data } = await supabase
+    .from('prep_tasks')
+    .insert({ date, text, done: false })
+    .select('id, date, text, done')
+    .single();
+  return data ?? null;
+}
+
+export async function togglePrepTask(id: string, done: boolean): Promise<void> {
+  await supabase.from('prep_tasks').update({ done }).eq('id', id);
+}
+
+export async function deletePrepTask(id: string): Promise<void> {
+  await supabase.from('prep_tasks').delete().eq('id', id);
+}
+
 // ─── Suppliers ───────────────────────────────────────────────────────────────
 
 export async function fetchSuppliers(): Promise<Supplier[]> {
