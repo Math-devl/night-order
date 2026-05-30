@@ -19,10 +19,19 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || '/admin?tab=historique';
-  // Store the target URL in cache — MobileApp reads it on mount and redirects
+
   event.waitUntil(
-    caches.open('__notif_redirect__')
-      .then(c => c.put('target', new Response(url)))
-      .then(() => clients.openWindow('/mobile'))
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // App already open: send a message to navigate without reloading
+      const mobileClient = clientList.find((c) => new URL(c.url).pathname === '/mobile');
+      if (mobileClient) {
+        mobileClient.postMessage({ type: 'NAVIGATE', url });
+        return mobileClient.focus();
+      }
+      // App not open: store URL in cache and open
+      return caches.open('__notif_redirect__')
+        .then((c) => c.put('target', new Response(url)))
+        .then(() => clients.openWindow('/mobile'));
+    })
   );
 });

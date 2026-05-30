@@ -39,7 +39,21 @@ export default function MobileApp() {
   const [preparationDate, setPreparationDate] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check for pending notification redirect (set by SW notificationclick)
+    // SW postMessage: app already open when notification clicked
+    const onSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'NAVIGATE') {
+        const parsed = new URL(event.data.url, window.location.origin);
+        if (parsed.pathname === '/mobile') {
+          const s = parsed.searchParams.get('screen') as Screen | null;
+          if (s) setScreen(s);
+        } else {
+          window.location.href = event.data.url;
+        }
+      }
+    };
+    navigator.serviceWorker?.addEventListener('message', onSwMessage);
+
+    // Cache redirect: app was closed when notification clicked
     if ('caches' in window) {
       caches.open('__notif_redirect__').then(async (cache) => {
         const res = await cache.match('target');
@@ -48,8 +62,8 @@ export default function MobileApp() {
           await cache.delete('target');
           const parsed = new URL(url, window.location.origin);
           if (parsed.pathname === '/mobile') {
-            const screenParam = parsed.searchParams.get('screen') as Screen | null;
-            if (screenParam) setScreen(screenParam);
+            const s = parsed.searchParams.get('screen') as Screen | null;
+            if (s) setScreen(s);
           } else {
             window.location.href = url;
           }
@@ -99,6 +113,8 @@ export default function MobileApp() {
         }
       }
     }).catch(() => {});
+
+    return () => { navigator.serviceWorker?.removeEventListener('message', onSwMessage); };
   }, []);
 
   const orders = useMemo(() => calculate(inventory, forecast, settings), [inventory, forecast, settings]);
