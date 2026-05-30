@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { CalculatedOrders } from '@/lib/types';
+import { notifyNewPrepTask } from '@/lib/push';
 
 interface Props {
   orders: CalculatedOrders | null;
   preparationDate?: string | null;
+  employeeId?: string;
 }
 
 const WEEKLY_TASKS: Record<number, string[]> = {
@@ -59,7 +61,7 @@ function TaskRow({ text, done, onToggle, onDelete }: { text: string; done: boole
   );
 }
 
-export default function PreparationScreen({ orders, preparationDate }: Props) {
+export default function PreparationScreen({ orders, preparationDate, employeeId }: Props) {
   const fritesABlanchir = orders?.fritesABlanchir ?? 0;
   const boulesViande = orders ? Math.round(orders.viandeTotal / 0.0625) : 0;
 
@@ -112,11 +114,13 @@ export default function PreparationScreen({ orders, preparationDate }: Props) {
 
   const addTask = () => {
     if (!newTaskText.trim()) { setAdding(false); return; }
-    const next = [...customTasks, { text: newTaskText.trim(), done: false }];
+    const taskText = newTaskText.trim();
+    const next = [...customTasks, { text: taskText, done: false }];
     setCustomTasks(next);
     persist(fixedDone, next);
     setNewTaskText('');
     setAdding(false);
+    notifyNewPrepTask(taskText, employeeId).catch(() => {});
   };
 
   const subtitle = preparationDate

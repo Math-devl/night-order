@@ -183,6 +183,7 @@ export default function MobileApp() {
         <PreparationScreen
           orders={lastValidatedOrders ?? null}
           preparationDate={preparationDate}
+          employeeId={session?.id}
         />
       )}
       {screen === 'livraison' && (

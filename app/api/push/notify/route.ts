@@ -14,40 +14,38 @@ const supabaseAdmin = createClient(
 );
 
 export async function POST(req: NextRequest) {
-  const { title, body } = await req.json();
+  const { title, body, url, target, excludeEmployee } = await req.json();
 
-  // Récupérer les IDs des employés admin
-  const { data: admins, error: adminError } = await supabaseAdmin
-    .from('employees')
-    .select('id')
-    .eq('is_admin', true);
+  let employeeIds: string[] = [];
 
-  if (adminError) {
-    console.error('[push/notify] admin query error:', adminError.message);
-    return NextResponse.json({ error: adminError.message }, { status: 500 });
+  if (target === 'all') {
+    const { data: employees, error } = await supabaseAdmin
+      .from('employees')
+      .select('id')
+      .eq('is_active', true);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    employeeIds = (employees ?? []).map((e: { id: string }) => e.id);
+    if (excludeEmployee) employeeIds = employeeIds.filter(id => id !== excludeEmployee);
+  } else {
+    const { data: admins, error } = await supabaseAdmin
+      .from('employees')
+      .select('id')
+      .eq('is_admin', true);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    employeeIds = (admins ?? []).map((a: { id: string }) => a.id);
   }
 
-  const adminIds = admins?.map(a => a.id) ?? [];
-  console.log('[push/notify] admin ids:', adminIds.length);
+  if (!employeeIds.length) return NextResponse.json({ ok: true, sent: 0 });
 
-  if (!adminIds.length) return NextResponse.json({ ok: true, sent: 0 });
-
-  // Récupérer leurs abonnements push
   const { data: subs, error: subError } = await supabaseAdmin
     .from('push_subscriptions')
     .select('subscription, endpoint')
-    .in('employee_id', adminIds);
+    .in('employee_id', employeeIds);
 
-  if (subError) {
-    console.error('[push/notify] subscriptions query error:', subError.message);
-    return NextResponse.json({ error: subError.message }, { status: 500 });
-  }
-
-  console.log('[push/notify] subscriptions found:', subs?.length ?? 0);
-
+  if (subError) return NextResponse.json({ error: subError.message }, { status: 500 });
   if (!subs?.length) return NextResponse.json({ ok: true, sent: 0 });
 
-  const payload = JSON.stringify({ title, body });
+  const payload = JSON.stringify({ title, body, url });
   let sent = 0;
 
   await Promise.allSettled(
@@ -62,6 +60,5 @@ export async function POST(req: NextRequest) {
     })
   );
 
-  console.log('[push/notify] sent:', sent);
   return NextResponse.json({ ok: true, sent });
 }

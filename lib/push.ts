@@ -101,6 +101,20 @@ export async function notifyDeliveryDiscrepancy(params: {
   });
 }
 
+export async function notifyNewPrepTask(taskText: string, excludeEmployeeId?: string): Promise<void> {
+  await fetch('/api/push/notify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: '📋 Nouvelle tâche préparation',
+      body: taskText,
+      url: '/mobile',
+      target: 'all',
+      excludeEmployee: excludeEmployeeId,
+    }),
+  });
+}
+
 /** @deprecated use notifyDeliveryDiscrepancy */
 export async function notifyMeatDiscrepancy(params: {
   date: string;
