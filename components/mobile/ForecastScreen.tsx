@@ -7,6 +7,7 @@ interface Props {
   onChange: (field: keyof ForecastState, value: string) => void;
   orders: CalculatedOrders;
   settings?: AppSettings;
+  saveStatus?: 'idle' | 'saving' | 'saved';
   onBack: () => void;
   onNext: () => void;
 }
@@ -43,7 +44,7 @@ function tomorrowLabel(): string {
   return `${days[d.getDay()]} ${dd}/${mm}`;
 }
 
-export default function ForecastScreen({ forecast, onChange, orders, settings, onBack, onNext }: Props) {
+export default function ForecastScreen({ forecast, onChange, orders, settings, saveStatus, onBack, onNext }: Props) {
   const burgers = parseFloat(forecast.burgersPrevus) || 0;
   const multFrites = settings?.frites.multiplicateur ?? 1;
   const multViande = settings?.viande.multiplicateur ?? 1;
@@ -58,6 +59,8 @@ export default function ForecastScreen({ forecast, onChange, orders, settings, o
       <div className="sticky top-0 bg-[#FFF0F5] pt-4 pb-4 px-4 z-10">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-[#1A1209]">Prévision — {tomorrowLabel()}</h1>
+          {saveStatus === 'saving' && <span className="text-xs text-[#A0909A]">Enregistrement…</span>}
+          {saveStatus === 'saved' && <span className="text-xs text-[#596643] font-medium">✓ Sauvegardé</span>}
         </div>
         {hasMultiplier && (
           <div className="mt-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2">

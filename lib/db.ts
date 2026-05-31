@@ -237,6 +237,23 @@ export async function hasTodayInventoryBeenDone(): Promise<boolean> {
   return data !== null;
 }
 
+// ─── Daily forecast (shared draft) ───────────────────────────────────────────
+
+export async function fetchDailyForecast(date: string): Promise<number | null> {
+  const res = await fetch(`/api/daily-forecast?date=${encodeURIComponent(date)}`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data?.burgers_prevus ?? null;
+}
+
+export async function saveDailyForecast(date: string, burgers: number, employeeId?: string): Promise<void> {
+  await fetch('/api/daily-forecast', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date, burgers_prevus: burgers, employee_id: employeeId }),
+  });
+}
+
 // ─── Prep tasks ──────────────────────────────────────────────────────────────
 
 export interface PrepTask {

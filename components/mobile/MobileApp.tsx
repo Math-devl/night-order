@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { InventoryState, ForecastState, ReceptionState, Screen, AppSettings, CalculatedOrders } from '@/lib/types';
 import { calculate } from '@/lib/calculations';
 import { fetchAppSettings } from '@/lib/settings';
-import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder, verifyEmployee } from '@/lib/db';
+import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder, verifyEmployee, fetchDailyForecast, saveDailyForecast } from '@/lib/db';
 import { getSession, clearSession, EmployeeSession } from '@/lib/auth';
 import { registerPushSubscription } from '@/lib/push';
 import BottomNav from './BottomNav';
@@ -37,6 +37,15 @@ export default function MobileApp() {
   const [lastValidatedOrders, setLastValidatedOrders] = useState<CalculatedOrders | null>(null);
   const [lastValidatedForecast, setLastValidatedForecast] = useState<ForecastState>(defaultForecast);
   const [preparationDate, setPreparationDate] = useState<string | null>(null);
+  const [forecastSaveStatus, setForecastSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedBadgeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const tomorrowStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
 
   useEffect(() => {
     // SW postMessage: app already open when notification clicked
@@ -98,8 +107,8 @@ export default function MobileApp() {
         const fmt = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
         const todayStr = fmt(new Date());
         const tmrw = new Date(); tmrw.setDate(tmrw.getDate() + 1);
-        const tomorrowStr = fmt(tmrw);
-        if (order.date === todayStr || order.date === tomorrowStr) {
+        const tomorrowStrLocal = fmt(tmrw);
+        if (order.date === todayStr || order.date === tomorrowStrLocal) {
           setLastValidatedForecast({ burgersPrevus: String(order.burgers_prevus) });
           setLastValidatedOrders({
             fritesABlanchir: order.frites_blanchir,
@@ -114,7 +123,27 @@ export default function MobileApp() {
       }
     }).catch(() => {});
 
-    return () => { navigator.serviceWorker?.removeEventListener('message', onSwMessage); };
+    fetchDailyForecast(tomorrowStr).then(burgers => {
+      if (burgers !== null && burgers > 0) {
+        setForecast(p => p.burgersPrevus === '' ? { burgersPrevus: String(burgers) } : p);
+      }
+    }).catch(() => {});
+
+    const onForecastVisible = () => {
+      if (document.visibilityState === 'visible') {
+        fetchDailyForecast(tomorrowStr).then(burgers => {
+          if (burgers !== null && burgers > 0) {
+            setForecast({ burgersPrevus: String(burgers) });
+          }
+        }).catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', onForecastVisible);
+
+    return () => {
+      navigator.serviceWorker?.removeEventListener('message', onSwMessage);
+      document.removeEventListener('visibilitychange', onForecastVisible);
+    };
   }, []);
 
   const orders = useMemo(() => calculate(inventory, forecast, settings), [inventory, forecast, settings]);
@@ -173,7 +202,28 @@ export default function MobileApp() {
       {screen === 'prevision' && (
         <ForecastScreen
           forecast={forecast}
-          onChange={(f, v) => setForecast(p => ({ ...p, [f]: v }))}
+          onChange={(f, v) => {
+            setForecast(p => ({ ...p, [f]: v }));
+            if (f === 'burgersPrevus') {
+              const burgers = parseFloat(v);
+              if (burgers > 0) {
+                setForecastSaveStatus('saving');
+                if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                saveTimeoutRef.current = setTimeout(() => {
+                  saveDailyForecast(tomorrowStr, burgers, session?.id)
+                    .then(() => {
+                      setForecastSaveStatus('saved');
+                      if (savedBadgeRef.current) clearTimeout(savedBadgeRef.current);
+                      savedBadgeRef.current = setTimeout(() => setForecastSaveStatus('idle'), 2000);
+                    })
+                    .catch(() => setForecastSaveStatus('idle'));
+                }, 800);
+              } else {
+                setForecastSaveStatus('idle');
+              }
+            }
+          }}
+          saveStatus={forecastSaveStatus}
           orders={orders}
           settings={settings}
           onBack={() => setScreen('inventaire')}
