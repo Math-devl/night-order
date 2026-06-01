@@ -85,6 +85,12 @@ function monthLabel(key: string): string {
 
 const fmt1 = (n: number) => n.toFixed(1);
 
+function inventaireDateStr(storedDate: string): string {
+  const d = new Date(storedDate + 'T00:00:00');
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function daysInMonthFromKey(monthKey: string): number {
   const [y, m] = monthKey.split('-').map(Number);
   return new Date(y, m, 0).getDate();
@@ -725,6 +731,74 @@ function ReceptionPanel({ r, onEdit, onVerify }: { r: MorningReception; onEdit: 
   );
 }
 
+const hasInventory = (o: DailyOrder) =>
+  o.buns_restants > 0 || o.boules_restantes > 0 ||
+  parseFloat(String(o.frites_fraiches)) > 0 || parseFloat(String(o.frites_blanchies)) > 0;
+
+function InventaireMonthBlock({ monthKey, orders }: { monthKey: string; orders: DailyOrder[] }) {
+  const [open, setOpen] = useState(true);
+  const real = orders.filter(hasInventory);
+
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-2.5 bg-[#596643] rounded-xl border border-[#6B7A50] hover:bg-[#496035] transition-colors"
+      >
+        <span className="text-[#F5EFA0] font-bold text-sm uppercase tracking-wider">{monthLabel(monthKey)}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[#8BA870] text-xs">{real.length} soir{real.length > 1 ? 's' : ''}</span>
+          <span className="text-[#8BA870] text-xs">{open ? '▲' : '▼'}</span>
+        </div>
+      </button>
+
+      {open && (
+        <div className="mt-1 overflow-x-auto rounded-xl border border-[#6B7A50]">
+          <table className="w-full min-w-max text-sm">
+            <thead>
+              <tr className="bg-[#496035] text-[#8BA870] text-xs uppercase">
+                <th className="text-left px-4 py-2.5">Date (soir)</th>
+                <th className="text-right px-3 py-2.5">Buns restants</th>
+                <th className="text-right px-3 py-2.5">Frites fraîches</th>
+                <th className="text-right px-3 py-2.5">Frites blanchies</th>
+                <th className="text-right px-3 py-2.5">Boules bœuf</th>
+              </tr>
+            </thead>
+            <tbody>
+              {real.map((o, i) => (
+                <tr key={o.id} className={`border-t border-[#6B7A50] ${i % 2 === 0 ? 'bg-[#596643]' : 'bg-[#4D5A39]'}`}>
+                  <td className="px-4 py-2.5 text-white font-medium whitespace-nowrap">{formatDate(inventaireDateStr(o.date))}</td>
+                  <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">{o.buns_restants}</td>
+                  <td className="px-3 py-2.5 text-right text-white">{fmt1(o.frites_fraiches)} kg</td>
+                  <td className="px-3 py-2.5 text-right text-white">{fmt1(o.frites_blanchies)} kg</td>
+                  <td className="px-3 py-2.5 text-right text-white">{o.boules_restantes}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-[#6B7A50] bg-[#3D4E2B]">
+                <td className="px-4 py-2.5 text-[#F5EFA0] text-xs font-bold uppercase tracking-wider">Moy. {monthLabel(monthKey)}</td>
+                <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">
+                  {real.length ? Math.round(real.reduce((s, o) => s + o.buns_restants, 0) / real.length) : '—'}
+                </td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">
+                  {real.length ? fmt1(real.reduce((s, o) => s + o.frites_fraiches, 0) / real.length) + ' kg' : '—'}
+                </td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">
+                  {real.length ? fmt1(real.reduce((s, o) => s + o.frites_blanchies, 0) / real.length) + ' kg' : '—'}
+                </td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">
+                  {real.length ? Math.round(real.reduce((s, o) => s + o.boules_restantes, 0) / real.length) : '—'}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete, onEditReception, onAddReception, onVerifyReception, onAdd, highlightDate }: {
   monthKey: string;
   orders: OrderRow[];
@@ -876,6 +950,7 @@ export default function HistoriqueSection() {
   const searchParams = useSearchParams();
   const highlightDate = searchParams.get('date') ?? null;
 
+  const [tab, setTab] = useState<'commandes' | 'inventaire'>('commandes');
   const [orders, setOrders] = useState<DailyOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [receptionsMap, setReceptionsMap] = useState<Record<string, MorningReception>>({});
@@ -984,16 +1059,37 @@ export default function HistoriqueSection() {
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-3 mb-6">
+      <div className="flex items-center justify-between gap-3 mb-4">
         <div className="min-w-0">
           <h2 className="text-xl font-bold text-[#1A1209]">Historique</h2>
           <p className="text-[#C4A8B5] text-sm mt-0.5">{orders.length} commandes</p>
         </div>
+        {tab === 'commandes' && (
+          <button
+            onClick={() => setShowExport(true)}
+            className="shrink-0 flex items-center gap-2 bg-[#596643] hover:bg-[#496035] border border-[#6B7A50] text-[#C8D4B0] hover:text-white px-3 py-2 rounded-xl text-sm font-medium transition-colors"
+          >
+            ↓ <span className="hidden sm:inline">Export </span>Excel
+          </button>
+        )}
+      </div>
+
+      <div className="flex gap-1 bg-[#3D4E2B] p-1 rounded-xl mb-4">
         <button
-          onClick={() => setShowExport(true)}
-          className="shrink-0 flex items-center gap-2 bg-[#596643] hover:bg-[#496035] border border-[#6B7A50] text-[#C8D4B0] hover:text-white px-3 py-2 rounded-xl text-sm font-medium transition-colors"
+          onClick={() => setTab('commandes')}
+          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
+            tab === 'commandes' ? 'bg-[#596643] text-white shadow-sm' : 'text-[#8BA870] hover:text-white'
+          }`}
         >
-          ↓ <span className="hidden sm:inline">Export </span>Excel
+          Commandes
+        </button>
+        <button
+          onClick={() => setTab('inventaire')}
+          className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
+            tab === 'inventaire' ? 'bg-[#596643] text-white shadow-sm' : 'text-[#8BA870] hover:text-white'
+          }`}
+        >
+          Inventaire
         </button>
       </div>
 
@@ -1003,17 +1099,40 @@ export default function HistoriqueSection() {
         <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-500 text-sm mb-4">{error}</div>
       )}
 
+      {tab === 'commandes' && (<>
+        {monthKeys.map((key) => (
+          <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} highlightDate={highlightDate} onEdit={setEditing} onDelete={(id) => setConfirmDelete(id)} onEditReception={setEditingReception} onAddReception={setAddingReception} onVerifyReception={handleVerifyReception} onAdd={() => setShowAdd(true)} />
+        ))}
+        {!loading && !error && orders.length === 0 && allRows.length === 0 && (
+          <div className="text-center py-16 text-[#C4A8B5]">
+            <p className="text-4xl mb-3">📋</p>
+            <p>Aucune commande enregistrée pour l'instant.</p>
+            <p className="text-xs mt-2">Les commandes validées sur mobile apparaîtront ici.</p>
+          </div>
+        )}
+      </>)}
 
-      {monthKeys.map((key) => (
-        <MonthBlock key={key} monthKey={key} orders={grouped[key]} prices={getSupplierPrices(suppliers)} receptionsMap={receptionsMap} highlightDate={highlightDate} onEdit={setEditing} onDelete={(id) => setConfirmDelete(id)} onEditReception={setEditingReception} onAddReception={setAddingReception} onVerifyReception={handleVerifyReception} onAdd={() => setShowAdd(true)} />
-      ))}
-      {!loading && !error && orders.length === 0 && allRows.length === 0 && (
-        <div className="text-center py-16 text-[#C4A8B5]">
-          <p className="text-4xl mb-3">📋</p>
-          <p>Aucune commande enregistrée pour l'instant.</p>
-          <p className="text-xs mt-2">Les commandes validées sur mobile apparaîtront ici.</p>
-        </div>
-      )}
+      {tab === 'inventaire' && (<>
+        {(() => {
+          const invOrders = orders.filter(hasInventory);
+          const invGrouped = invOrders.reduce((acc, o) => {
+            const key = inventaireDateStr(o.date).slice(0, 7);
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(o);
+            return acc;
+          }, {} as Record<string, DailyOrder[]>);
+          const invMonthKeys = Object.keys(invGrouped).sort().reverse();
+          if (!loading && invMonthKeys.length === 0) return (
+            <div className="text-center py-16 text-[#C4A8B5]">
+              <p className="text-4xl mb-3">📦</p>
+              <p>Aucun inventaire enregistré pour l'instant.</p>
+            </div>
+          );
+          return invMonthKeys.map(key => (
+            <InventaireMonthBlock key={key} monthKey={key} orders={invGrouped[key]} />
+          ));
+        })()}
+      </>)}
 
       {editing && <EditModal order={editing} onSave={handleEdit} onClose={() => setEditing(null)} />}
       {editingReception && <EditReceptionModal reception={editingReception} onSave={handleEditReception} onClose={() => setEditingReception(null)} />}
