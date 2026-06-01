@@ -101,6 +101,37 @@ export async function notifyDeliveryDiscrepancy(params: {
   });
 }
 
+export async function notifyOrderValidated(params: {
+  dayName: string;
+  burgers: number;
+  frites: number;
+  viande: number;
+  buns: number;
+}): Promise<void> {
+  const { dayName, burgers, frites, viande, buns } = params;
+  await fetch('/api/push/notify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: `✅ Commande validée — ${dayName} soir`,
+      body: `${burgers} burgers · ${frites} kg frites · ${viande} kg viande · ${buns} buns`,
+      url: '/admin?tab=historique',
+    }),
+  });
+}
+
+export async function notifyReceptionSaved(date: string): Promise<void> {
+  await fetch('/api/push/notify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: `📦 Livraison confirmée — ${date}`,
+      body: 'Les quantités reçues ont été enregistrées.',
+      url: '/admin?tab=historique',
+    }),
+  });
+}
+
 export async function notifyNewPrepTask(taskText: string, excludeEmployeeId?: string): Promise<void> {
   await fetch('/api/push/notify', {
     method: 'POST',

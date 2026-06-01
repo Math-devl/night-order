@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ReceptionState } from '@/lib/types';
 import { fetchLastOrder, saveReception, fetchTodayReception, DailyOrder } from '@/lib/db';
-import { notifyDeliveryDiscrepancy } from '@/lib/push';
+import { notifyDeliveryDiscrepancy, notifyReceptionSaved } from '@/lib/push';
 
 interface Props {
   reception: ReceptionState;
@@ -157,6 +157,7 @@ export default function MorningScreen({ reception, onChange, onSaved }: Props) {
       grasCmd: lastOrder.gras,  grasRecu: gras,
       bunsCmd: lastOrder.buns_commander, bunsRecus: parseInt(reception.bunsRecus) || 0,
     }).catch(() => {});
+    notifyReceptionSaved(dateLabel).catch(() => {});
     setSaved(true);
     setTimeout(onSaved, 2000);
   };

@@ -2,6 +2,7 @@
 
 import { CalculatedOrders, InventoryState, ForecastState, AppSettings, Supplier, Product, ContactType } from '@/lib/types';
 import { saveOrder, fetchSuppliers } from '@/lib/db';
+import { notifyOrderValidated } from '@/lib/push';
 import { getSession } from '@/lib/auth';
 import { useState, useEffect } from 'react';
 
@@ -128,6 +129,13 @@ export default function ValidationScreen({ inventory, forecast, orders, settings
       alert(result.error);
       return;
     }
+    notifyOrderValidated({
+      dayName: dayName(),
+      burgers,
+      frites: orders.fritesACommander,
+      viande: orders.viandeTotal,
+      buns: orders.bunsACommander,
+    }).catch(() => {});
     setTimeout(onValidated, 2500);
   };
 
