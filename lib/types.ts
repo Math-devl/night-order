@@ -10,6 +10,7 @@ export interface InventoryState {
 
 export interface ForecastState {
   burgersPrevus: string;
+  extraBoulesBoeuf: string;
 }
 
 export interface CalculatedOrders {

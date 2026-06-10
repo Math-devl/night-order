@@ -46,6 +46,7 @@ function tomorrowLabel(): string {
 
 export default function ForecastScreen({ forecast, onChange, orders, settings, saveStatus, onBack, onNext }: Props) {
   const burgers = parseFloat(forecast.burgersPrevus) || 0;
+  const extraBoules = parseFloat(forecast.extraBoulesBoeuf) || 0;
   const multFrites = settings?.frites.multiplicateur ?? 1;
   const multViande = settings?.viande.multiplicateur ?? 1;
   const multBuns = settings?.buns.multiplicateur ?? 1;
@@ -101,6 +102,37 @@ export default function ForecastScreen({ forecast, onChange, orders, settings, s
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="bg-[#596643] rounded-2xl p-5 mb-4 border border-[#6B7A50]">
+          <h3 className="text-[#F5EFA0] text-sm font-bold uppercase tracking-widest mb-1">🥩 EXTRA BŒUF</h3>
+          <p className="text-[#C8D4B0] text-xs mb-3">triples, poches de secours</p>
+          <div className="grid grid-cols-5 gap-2">
+            <button
+              onClick={() => onChange('extraBoulesBoeuf', '')}
+              className={`py-3 rounded-xl text-sm font-bold transition-colors ${
+                extraBoules === 0 ? 'bg-[#FF4D8A] text-white' : 'bg-[#496035] text-[#C8D4B0] active:bg-[#3D4E2B] border border-[#6B7A50]'
+              }`}
+            >
+              0
+            </button>
+            {[10, 20, 40, 60].map((n) => (
+              <button
+                key={n}
+                onClick={() => onChange('extraBoulesBoeuf', String(n))}
+                className={`py-3 rounded-xl text-sm font-bold transition-colors ${
+                  extraBoules === n ? 'bg-[#FF4D8A] text-white' : 'bg-[#496035] text-[#C8D4B0] active:bg-[#3D4E2B] border border-[#6B7A50]'
+                }`}
+              >
+                +{n}
+              </button>
+            ))}
+          </div>
+          {extraBoules > 0 && (
+            <p className="text-[#F5EFA0] text-xs mt-3 text-center">
+              {extraBoules} boules supplémentaires · +{(extraBoules * 0.0625 * multViande).toFixed(1).replace(/\.0$/, '')} kg de viande
+            </p>
+          )}
         </div>
 
         {burgers > 0 && (

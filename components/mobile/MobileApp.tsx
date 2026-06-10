@@ -21,7 +21,7 @@ const defaultInventory: InventoryState = {
   fritesFraiches: '', fritesBlanchies: '', boulesRestantes: '',
   pctGras: '26.5', bunsRestants: '', bunsJeter: '', bunsJ2: '',
 };
-const defaultForecast: ForecastState = { burgersPrevus: '' };
+const defaultForecast: ForecastState = { burgersPrevus: '', extraBoulesBoeuf: '' };
 const defaultReception: ReceptionState = { fritesRecues: '', viandeRecueBoeuf: '', viandeRecueGras: '', bunsRecus: '' };
 
 const COMMANDE_SCREENS: Screen[] = ['inventaire', 'prevision', 'validation'];
@@ -109,7 +109,7 @@ export default function MobileApp() {
         const tmrw = new Date(); tmrw.setDate(tmrw.getDate() + 1);
         const tomorrowStrLocal = fmt(tmrw);
         if (order.date === todayStr || order.date === tomorrowStrLocal) {
-          setLastValidatedForecast({ burgersPrevus: String(order.burgers_prevus) });
+          setLastValidatedForecast({ burgersPrevus: String(order.burgers_prevus), extraBoulesBoeuf: '' });
           setLastValidatedOrders({
             fritesABlanchir: order.frites_blanchir,
             fritesACommander: order.frites_commander,
@@ -125,7 +125,7 @@ export default function MobileApp() {
 
     fetchDailyForecast(tomorrowStr).then(burgers => {
       if (burgers !== null && burgers > 0) {
-        setForecast(p => p.burgersPrevus === '' ? { burgersPrevus: String(burgers) } : p);
+        setForecast(p => p.burgersPrevus === '' ? { ...p, burgersPrevus: String(burgers) } : p);
       }
     }).catch(() => {});
 
@@ -133,7 +133,7 @@ export default function MobileApp() {
       if (document.visibilityState === 'visible') {
         fetchDailyForecast(tomorrowStr).then(burgers => {
           if (burgers !== null && burgers > 0) {
-            setForecast({ burgersPrevus: String(burgers) });
+            setForecast(p => ({ ...p, burgersPrevus: String(burgers) }));
           }
         }).catch(() => {});
       }

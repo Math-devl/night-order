@@ -15,6 +15,7 @@ export function calculate(
   margeFrites = 5
 ): CalculatedOrders {
   const burgers = parseFloat(forecast.burgersPrevus) || 0;
+  const extraBoulesBoeuf = parseFloat(forecast.extraBoulesBoeuf) || 0;
   const fritesFraiches = parseFloat(inventory.fritesFraiches) || 0;
   const fritesBlanchies = parseFloat(inventory.fritesBlanchies) || 0;
   const boules = parseFloat(inventory.boulesRestantes) || 0;
@@ -39,16 +40,16 @@ export function calculate(
   }
 
   // Viande
-  let viandeTotal: number, boeuf: number, gras: number;
+  let viandeTotal: number;
+  const extraViande = extraBoulesBoeuf * 0.0625 * multViande;
   if (settings?.viande.fixedOrder.is_active) {
-    viandeTotal = settings.viande.fixedOrder.qty_today;
-    boeuf = round(viandeTotal * (1 - pctGras / 100));
-    gras = round(viandeTotal * (pctGras / 100));
+    viandeTotal = round(settings.viande.fixedOrder.qty_today + extraViande);
   } else {
-    viandeTotal = round(Math.max(0, (burgers * 2 - boules) * 0.0625) * multViande);
-    boeuf = round(viandeTotal * (1 - pctGras / 100));
-    gras = round(viandeTotal * (pctGras / 100));
+    const baseBoules = Math.max(0, burgers * 2 - boules);
+    viandeTotal = round((baseBoules + extraBoulesBoeuf) * 0.0625 * multViande);
   }
+  const boeuf = round(viandeTotal * (1 - pctGras / 100));
+  const gras = round(viandeTotal * (pctGras / 100));
 
   // Buns
   let bunsACommander: number;
