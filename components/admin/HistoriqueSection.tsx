@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, verifyReception, syncReceptionCommanded, DailyOrder, MorningReception } from '@/lib/db';
+import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, insertPlannedOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, verifyReception, syncReceptionCommanded, DailyOrder, MorningReception } from '@/lib/db';
 import { notifyDeliveryDiscrepancy } from '@/lib/push';
 import { Supplier, Product } from '@/lib/types';
 
@@ -478,14 +478,19 @@ function AddOrderModal({ onSave, onClose }: { onSave: () => void; onClose: () =>
   );
 }
 
-function EditModal({ order, onSave, onClose }: { order: DailyOrder; onSave: (u: Partial<DailyOrder>) => void; onClose: () => void }) {
+function EditModal({ order, isPlaceholder, onSave, onClose }: { order: DailyOrder; isPlaceholder?: boolean; onSave: (u: Partial<DailyOrder>) => void; onClose: () => void }) {
   const [values, setValues] = useState<Partial<DailyOrder>>({});
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-[#596643] border border-[#6B7A50] rounded-2xl p-6 w-full max-w-md shadow-xl">
-        <h3 className="text-white font-bold text-lg mb-1">Modifier la commande</h3>
-        <p className="text-[#C8D4B0] text-sm mb-4">{formatDate(order.date)} — {order.burgers_prevus} burgers</p>
+        <h3 className="text-white font-bold text-lg mb-1">
+          {isPlaceholder ? 'Pré-remplir la commande' : 'Modifier la commande'}
+        </h3>
+        <p className="text-[#C8D4B0] text-sm mb-4">
+          {formatDate(order.date)}
+          {isPlaceholder ? ' — à venir, remplis ce que tu veux' : ` — ${order.burgers_prevus} burgers`}
+        </p>
 
         <div className="space-y-3 max-h-96 overflow-y-auto">
           {EDITABLE_FIELDS.map(({ key, label, unit }) => (
@@ -494,8 +499,16 @@ function EditModal({ order, onSave, onClose }: { order: DailyOrder; onSave: (u: 
               <div className="flex items-center gap-1">
                 <input
                   type="number"
-                  defaultValue={order[key] as number}
-                  onChange={(e) => setValues((v) => ({ ...v, [key]: parseFloat(e.target.value) }))}
+                  {...(isPlaceholder ? { placeholder: '—' } : { defaultValue: order[key] as number })}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setValues((v) => {
+                      const next = { ...v };
+                      if (raw === '') delete next[key];
+                      else next[key] = parseFloat(raw);
+                      return next;
+                    });
+                  }}
                   className="w-24 bg-[#FFF0F5] text-[#1A1209] text-right rounded-lg px-3 py-1.5 border border-[#496035] focus:border-[#FF4D8A] focus:outline-none text-sm"
                 />
                 {unit && <span className="text-[#8BA870] text-xs w-6">{unit}</span>}
@@ -897,7 +910,13 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
                       </td>
                       <td className="px-3 py-2.5 text-right text-white">{o.buns_commander}</td>
                       <td className="px-3 py-2.5">
-                        {!('isPlaceholder' in o && o.isPlaceholder) && (
+                        {'isPlaceholder' in o && o.isPlaceholder ? (
+                          <div className="flex justify-end">
+                            <button onClick={() => onEdit(o)} className="text-[#C8D4B0] hover:text-[#FF4D8A] text-xs px-2 py-1 rounded-lg border border-dashed border-[#6B7A50] hover:border-[#FF4D8A]/40 transition-colors">
+                              Modifier
+                            </button>
+                          </div>
+                        ) : (
                           <div className="flex gap-2 justify-end">
                             <button onClick={() => onEdit(o)} className="text-[#C8D4B0] hover:text-[#FF4D8A] text-xs px-2 py-1 rounded-lg border border-[#6B7A50] hover:border-[#FF4D8A]/40 transition-colors">
                               Modifier
@@ -999,6 +1018,19 @@ export default function HistoriqueSection() {
 
   const handleEdit = async (updated: Partial<DailyOrder>) => {
     if (!editing) return;
+    if (editing.id.startsWith('placeholder-')) {
+      const { error: insertErr } = await insertPlannedOrder(editing.date, editing.day_name, {
+        burgers_prevus: updated.burgers_prevus,
+        frites_commander: updated.frites_commander,
+        boeuf: updated.boeuf,
+        gras: updated.gras,
+        buns_commander: updated.buns_commander,
+      });
+      if (insertErr) { alert(insertErr); return; }
+      setEditing(null);
+      load();
+      return;
+    }
     const merged = { ...editing, ...updated };
     // Recalculer viande_total si boeuf ou gras ont changé
     if (updated.boeuf !== undefined || updated.gras !== undefined) {
@@ -1134,7 +1166,7 @@ export default function HistoriqueSection() {
         })()}
       </>)}
 
-      {editing && <EditModal order={editing} onSave={handleEdit} onClose={() => setEditing(null)} />}
+      {editing && <EditModal order={editing} isPlaceholder={editing.id.startsWith('placeholder-')} onSave={handleEdit} onClose={() => setEditing(null)} />}
       {editingReception && <EditReceptionModal reception={editingReception} onSave={handleEditReception} onClose={() => setEditingReception(null)} />}
       {addingReception && <AddReceptionModal order={addingReception} onSave={handleAddReception} onClose={() => setAddingReception(null)} />}
       {showExport && <ExportModal orders={orders} monthKeys={monthKeys} receptionsMap={receptionsMap} onClose={() => setShowExport(false)} />}

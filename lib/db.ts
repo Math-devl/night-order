@@ -90,6 +90,36 @@ export async function deleteOrder(id: string): Promise<{ error: string | null }>
   return { error: data.error ?? null };
 }
 
+export async function insertPlannedOrder(
+  date: string,
+  dayName: string,
+  fields: Partial<Pick<DailyOrder, 'burgers_prevus' | 'frites_commander' | 'boeuf' | 'gras' | 'buns_commander'>>
+): Promise<{ error: string | null }> {
+  const boeuf = fields.boeuf ?? 0;
+  const gras = fields.gras ?? 0;
+  const viande_total = Math.round((boeuf + gras) * 10) / 10;
+  const { data: existing } = await supabase
+    .from('daily_orders').select('id').eq('date', date).maybeSingle();
+  if (existing) {
+    return { error: 'Une commande existe déjà pour cette date — rafraîchis la page.' };
+  }
+  const { error } = await supabase.from('daily_orders').insert({
+    date,
+    day_name: dayName,
+    burgers_prevus: fields.burgers_prevus ?? 0,
+    frites_fraiches: 0, frites_blanchies: 0, boules_restantes: 0,
+    pct_gras: 26.5, buns_restants: 0,
+    frites_blanchir: 0,
+    frites_commander: fields.frites_commander ?? 0,
+    viande_total,
+    boeuf,
+    gras,
+    buns_commander: fields.buns_commander ?? 0,
+    validated_at: new Date().toISOString(),
+  });
+  return { error: error?.message ?? null };
+}
+
 export async function insertManualOrder(data: {
   date: string;
   burgers_prevus: number;
