@@ -396,14 +396,14 @@ export async function deleteEmployee(id: string): Promise<void> {
   await supabase.from('employees').delete().eq('id', id);
 }
 
-export async function verifyEmployee(id: string): Promise<boolean> {
+export async function verifyEmployee(id: string): Promise<{ active: boolean; is_admin: boolean } | null> {
   const { data } = await supabase
     .from('employees')
-    .select('id')
+    .select('id, is_active, is_admin')
     .eq('id', id)
-    .eq('is_active', true)
     .maybeSingle();
-  return data !== null;
+  if (!data) return null;
+  return { active: !!data.is_active, is_admin: !!data.is_admin };
 }
 
 export async function verifyCode(code: string): Promise<Employee | null> {

@@ -105,34 +105,34 @@ export default function ForecastScreen({ forecast, onChange, orders, settings, s
         </div>
 
         <div className="bg-[#596643] rounded-2xl p-5 mb-4 border border-[#6B7A50]">
-          <h3 className="text-[#F5EFA0] text-sm font-bold uppercase tracking-widest mb-1">🥩 EXTRA BŒUF</h3>
+          <h3 className="text-[#F5EFA0] text-sm font-bold uppercase tracking-widest mb-1">🥩 EXTRA BŒUF <span className="text-[#C8D4B0] normal-case tracking-normal font-medium">(nombre de boules)</span></h3>
           <p className="text-[#C8D4B0] text-xs mb-3">triples, poches de secours</p>
           <div className="grid grid-cols-5 gap-2">
             <button
               onClick={() => onChange('extraBoulesBoeuf', '')}
-              className={`py-3 rounded-xl text-sm font-bold transition-colors ${
+              className={`py-3 rounded-xl text-sm font-bold transition-colors flex flex-col items-center justify-center leading-tight ${
                 extraBoules === 0 ? 'bg-[#FF4D8A] text-white' : 'bg-[#496035] text-[#C8D4B0] active:bg-[#3D4E2B] border border-[#6B7A50]'
               }`}
             >
-              0
+              <span>0</span>
+              <span className="text-[10px] opacity-70 mt-0.5">—</span>
             </button>
-            {[10, 20, 40, 60].map((n) => (
-              <button
-                key={n}
-                onClick={() => onChange('extraBoulesBoeuf', String(n))}
-                className={`py-3 rounded-xl text-sm font-bold transition-colors ${
-                  extraBoules === n ? 'bg-[#FF4D8A] text-white' : 'bg-[#496035] text-[#C8D4B0] active:bg-[#3D4E2B] border border-[#6B7A50]'
-                }`}
-              >
-                +{n}
-              </button>
-            ))}
+            {[10, 20, 40, 60].map((n) => {
+              const kgLabel = (n * 0.0625 * multViande).toFixed(1);
+              return (
+                <button
+                  key={n}
+                  onClick={() => onChange('extraBoulesBoeuf', String(n))}
+                  className={`py-3 rounded-xl text-sm font-bold transition-colors flex flex-col items-center justify-center leading-tight ${
+                    extraBoules === n ? 'bg-[#FF4D8A] text-white' : 'bg-[#496035] text-[#C8D4B0] active:bg-[#3D4E2B] border border-[#6B7A50]'
+                  }`}
+                >
+                  <span>+{n}</span>
+                  <span className="text-[10px] opacity-80 mt-0.5">{kgLabel} kg</span>
+                </button>
+              );
+            })}
           </div>
-          {extraBoules > 0 && (
-            <p className="text-[#F5EFA0] text-xs mt-3 text-center">
-              {extraBoules} boules supplémentaires · +{(extraBoules * 0.0625 * multViande).toFixed(1).replace(/\.0$/, '')} kg de viande
-            </p>
-          )}
         </div>
 
         {burgers > 0 && (

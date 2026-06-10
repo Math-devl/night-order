@@ -5,7 +5,7 @@ import { InventoryState, ForecastState, ReceptionState, Screen, AppSettings, Cal
 import { calculate } from '@/lib/calculations';
 import { fetchAppSettings } from '@/lib/settings';
 import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder, verifyEmployee, fetchDailyForecast, saveDailyForecast } from '@/lib/db';
-import { getSession, clearSession, EmployeeSession } from '@/lib/auth';
+import { getSession, setSession as persistSession, clearSession, EmployeeSession } from '@/lib/auth';
 import { registerPushSubscription } from '@/lib/push';
 import BottomNav from './BottomNav';
 import CommandeSteps from './CommandeSteps';
@@ -82,9 +82,11 @@ export default function MobileApp() {
 
     const s = getSession();
     if (s) {
-      verifyEmployee(s.id).then(active => {
-        if (active) {
-          setSession(s);
+      verifyEmployee(s.id).then(status => {
+        if (status?.active) {
+          const refreshed: EmployeeSession = { ...s, is_admin: status.is_admin };
+          if (s.is_admin !== status.is_admin) persistSession(refreshed);
+          setSession(refreshed);
           registerPushSubscription(s.id).catch(() => {});
         } else {
           clearSession();
