@@ -237,6 +237,7 @@ export default function MobileApp() {
           orders={inventoryDone && lastValidatedOrders ? lastValidatedOrders : orders}
           settings={settings}
           alreadyDone={inventoryDone}
+          isAdmin={session?.is_admin}
           onBack={() => setScreen('prevision')}
           onValidated={() => {
             setLastValidatedOrders(orders);
@@ -248,6 +249,15 @@ export default function MobileApp() {
             tomorrow.setDate(tomorrow.getDate() + 1);
             setPreparationDate(`${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`);
             setScreen('preparation');
+          }}
+          onCancelled={(restored) => {
+            setInventory(restored.inventory);
+            setForecast(restored.forecast);
+            setLastValidatedOrders(null);
+            setLastValidatedForecast(defaultForecast);
+            setPreparationDate(null);
+            setInventoryDone(false);
+            setScreen('inventaire');
           }}
         />
       )}

@@ -46,6 +46,20 @@ export async function saveOrder(
   return { error: null };
 }
 
+export async function cancelTomorrowOrder(employeeId: string): Promise<{
+  error: string | null;
+  restored?: { inventory: InventoryState; forecast: ForecastState };
+}> {
+  const res = await fetch('/api/cancel-order', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ employeeId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { error: data.error ?? 'Erreur serveur.' };
+  return { error: null, restored: data.restored };
+}
+
 export async function fetchOrders(): Promise<DailyOrder[]> {
   const { data, error } = await supabase
     .from('daily_orders')

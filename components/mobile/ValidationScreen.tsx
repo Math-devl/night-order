@@ -1,7 +1,7 @@
 'use client';
 
 import { CalculatedOrders, InventoryState, ForecastState, AppSettings, Supplier, Product, ContactType } from '@/lib/types';
-import { saveOrder, fetchSuppliers } from '@/lib/db';
+import { saveOrder, fetchSuppliers, cancelTomorrowOrder } from '@/lib/db';
 import { notifyOrderValidated } from '@/lib/push';
 import { getSession } from '@/lib/auth';
 import { useState, useEffect } from 'react';
@@ -12,8 +12,10 @@ interface Props {
   orders: CalculatedOrders;
   settings?: AppSettings;
   alreadyDone?: boolean;
+  isAdmin?: boolean;
   onBack: () => void;
   onValidated: () => void;
+  onCancelled?: (restored: { inventory: InventoryState; forecast: ForecastState }) => void;
 }
 
 function OrderBlock({ title, emoji, lines }: { title: string; emoji: string; lines: { label: string; value: string; sub?: string }[] }) {
@@ -94,10 +96,11 @@ function MessageCard({ supplierName, contactType, message }: { supplierName: str
   );
 }
 
-export default function ValidationScreen({ inventory, forecast, orders, settings, alreadyDone, onBack, onValidated }: Props) {
+export default function ValidationScreen({ inventory, forecast, orders, settings, alreadyDone, isAdmin, onBack, onValidated, onCancelled }: Props) {
   const [validated, setValidated] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [showMessages, setShowMessages] = useState(alreadyDone ?? false);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => { fetchSuppliers().then(setSuppliers).catch(() => {}); }, []);
 
@@ -119,6 +122,24 @@ export default function ValidationScreen({ inventory, forecast, orders, settings
       .sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
       .map(s => ({ supplier: s, message: interpolate(s.message_template, product, orders) }));
   });
+
+  const handleCancel = async () => {
+    if (!onCancelled) return;
+    const session = getSession();
+    if (!session?.id) return;
+    const ok = window.confirm(
+      'Annuler la commande validée ?\n\nL’inventaire saisi reste enregistré — tu pourras corriger la prévision et revalider.'
+    );
+    if (!ok) return;
+    setCancelling(true);
+    const result = await cancelTomorrowOrder(session.id);
+    setCancelling(false);
+    if (result.error || !result.restored) {
+      alert(result.error ?? 'Erreur lors de l’annulation.');
+      return;
+    }
+    onCancelled(result.restored);
+  };
 
   const handleValidate = async () => {
     setValidated(true);
@@ -205,9 +226,26 @@ export default function ValidationScreen({ inventory, forecast, orders, settings
         )}
 
         {alreadyDone ? (
-          <div className="w-full bg-green-50 border border-green-300 text-green-700 text-xl font-bold py-5 rounded-2xl text-center">
-            ✓ Commande déjà validée aujourd'hui
-          </div>
+          <>
+            <div className="w-full bg-green-50 border border-green-300 text-green-700 text-xl font-bold py-5 rounded-2xl text-center">
+              ✓ Commande déjà validée aujourd'hui
+            </div>
+            {isAdmin && onCancelled && (
+              <div className="mt-4 bg-amber-50 border border-amber-300 rounded-2xl p-4">
+                <h3 className="text-amber-800 text-sm font-bold uppercase tracking-widest mb-1">🛠 Mode admin</h3>
+                <p className="text-amber-700 text-xs mb-3">
+                  Annule la commande pour corriger la prévision. L’inventaire saisi reste enregistré.
+                </p>
+                <button
+                  onClick={handleCancel}
+                  disabled={cancelling}
+                  className="w-full bg-amber-600 active:bg-amber-700 disabled:opacity-60 text-white text-base font-bold py-3 rounded-xl transition-colors"
+                >
+                  {cancelling ? 'Annulation…' : 'Annuler la commande'}
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <button
             onClick={handleValidate}
