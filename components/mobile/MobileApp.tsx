@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { InventoryState, ForecastState, ReceptionState, Screen, AppSettings, CalculatedOrders } from '@/lib/types';
 import { calculate } from '@/lib/calculations';
 import { fetchAppSettings } from '@/lib/settings';
-import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder, verifyEmployee, fetchDailyForecast, saveDailyForecast } from '@/lib/db';
+import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder, verifyEmployee, fetchDailyForecast, saveDailyForecast, fetchInventoryDraft, saveInventoryDraft } from '@/lib/db';
 import { getSession, setSession as persistSession, clearSession, EmployeeSession } from '@/lib/auth';
 import { registerPushSubscription } from '@/lib/push';
 import BottomNav from './BottomNav';
@@ -38,8 +38,37 @@ export default function MobileApp() {
   const [lastValidatedForecast, setLastValidatedForecast] = useState<ForecastState>(defaultForecast);
   const [preparationDate, setPreparationDate] = useState<string | null>(null);
   const [forecastSaveStatus, setForecastSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedBadgeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftSavedBadgeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Garde-fous brouillon : pas d'écriture avant la fin de l'hydratation,
+  // pas d'hydratation par-dessus une saisie déjà commencée
+  const draftHydratedRef = useRef(false);
+  const inventoryTouchedRef = useRef(false);
+  const inventoryRef = useRef(inventory);
+  const forecastRef = useRef(forecast);
+  const sessionRef = useRef(session);
+
+  useEffect(() => { inventoryRef.current = inventory; }, [inventory]);
+  useEffect(() => { forecastRef.current = forecast; }, [forecast]);
+  useEffect(() => { sessionRef.current = session; }, [session]);
+
+  const scheduleDraftSave = () => {
+    setDraftSaveStatus('saving');
+    if (draftSaveTimeoutRef.current) clearTimeout(draftSaveTimeoutRef.current);
+    draftSaveTimeoutRef.current = setTimeout(async () => {
+      const { error } = await saveInventoryDraft(inventoryRef.current, forecastRef.current.burgersPrevus, sessionRef.current?.id);
+      if (error) {
+        setDraftSaveStatus('error');
+        return;
+      }
+      setDraftSaveStatus('saved');
+      if (draftSavedBadgeRef.current) clearTimeout(draftSavedBadgeRef.current);
+      draftSavedBadgeRef.current = setTimeout(() => setDraftSaveStatus('idle'), 2000);
+    }, 800);
+  };
 
   const tomorrowStr = useMemo(() => {
     const d = new Date();
@@ -131,6 +160,27 @@ export default function MobileApp() {
       }
     }).catch(() => {});
 
+    fetchInventoryDraft(tomorrowStr).then(draft => {
+      draftHydratedRef.current = true;
+      if (draft && draft.status === 'draft' && !inventoryTouchedRef.current) {
+        setInventory({
+          fritesFraiches: draft.frites_fraiches,
+          fritesBlanchies: draft.frites_blanchies,
+          boulesRestantes: draft.boules_restantes,
+          pctGras: draft.pct_gras !== '' ? draft.pct_gras : '26.5',
+          bunsRestants: draft.buns_restants,
+          bunsJeter: draft.buns_jeter,
+          bunsJ2: draft.buns_j2,
+        });
+        if (draft.burgers_prevus !== '') {
+          setForecast(p => p.burgersPrevus === '' ? { ...p, burgersPrevus: draft.burgers_prevus } : p);
+        }
+      } else if (inventoryTouchedRef.current) {
+        // L'utilisateur a saisi avant la fin de l'hydratation : on persiste sa saisie
+        scheduleDraftSave();
+      }
+    }).catch(() => { draftHydratedRef.current = true; });
+
     const onForecastVisible = () => {
       if (document.visibilityState === 'visible') {
         fetchDailyForecast(tomorrowStr).then(burgers => {
@@ -194,7 +244,12 @@ export default function MobileApp() {
       {screen === 'inventaire' && !inventoryDone && (
         <InventoryScreen
           inventory={inventory}
-          onChange={(f, v) => setInventory(p => ({ ...p, [f]: v }))}
+          saveStatus={draftSaveStatus}
+          onChange={(f, v) => {
+            setInventory(p => ({ ...p, [f]: v }));
+            inventoryTouchedRef.current = true;
+            if (draftHydratedRef.current) scheduleDraftSave();
+          }}
           onNext={() => setScreen('prevision')}
           fixedFrites={fritesFixed}
           fixedViande={viandeFixed}

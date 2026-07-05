@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { localDateStr } from '@/lib/dates';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,9 +9,6 @@ const supabaseAdmin = createClient(
 
 const FR_DAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -62,6 +60,30 @@ export async function POST(req: NextRequest) {
     : await supabaseAdmin.from('daily_orders').insert(orderData);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Fige le brouillon avec les valeurs effectivement validées.
+  // Upsert : la validation doit marcher même sans brouillon préexistant.
+  // Échec non bloquant : la commande reste valide, le brouillon est secondaire.
+  const { error: draftError } = await supabaseAdmin
+    .from('inventory_drafts')
+    .upsert(
+      {
+        date: deliveryDate,
+        frites_fraiches: String(orderData.frites_fraiches),
+        frites_blanchies: String(orderData.frites_blanchies),
+        boules_restantes: String(orderData.boules_restantes),
+        pct_gras: String(orderData.pct_gras),
+        buns_restants: String(orderData.buns_restants),
+        buns_jeter: String(inventory?.bunsJeter ?? ''),
+        buns_j2: String(inventory?.bunsJ2 ?? ''),
+        burgers_prevus: String(orderData.burgers_prevus),
+        status: 'validated',
+        updated_by: employeeId,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'date' }
+    );
+  if (draftError) console.error('inventory_drafts (validation):', draftError.message);
 
   if (bunsJ2 > 0) {
     const j2 = new Date();

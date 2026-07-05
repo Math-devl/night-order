@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { localDateStr } from '@/lib/dates';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 export async function DELETE(req: NextRequest) {
   const { employeeId } = await req.json();
@@ -71,6 +69,19 @@ export async function DELETE(req: NextRequest) {
       extraBoulesBoeuf: '',
     },
   };
+
+  // Le brouillon repasse en 'draft' AVANT toute suppression : si ça échoue,
+  // on n'annule pas (commande intacte) plutôt que de laisser un état incohérent.
+  const { error: draftError } = await supabaseAdmin
+    .from('inventory_drafts')
+    .update({ status: 'draft', updated_at: new Date().toISOString() })
+    .eq('date', tomorrowDate);
+  if (draftError) {
+    return NextResponse.json(
+      { error: 'Annulation impossible (brouillon) : ' + draftError.message },
+      { status: 500 }
+    );
+  }
 
   await supabaseAdmin.from('morning_reception').delete().eq('order_id', order.id);
 

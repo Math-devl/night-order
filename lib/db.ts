@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { localDateStr } from './dates';
 import { InventoryState, ForecastState, CalculatedOrders, Supplier, Period, DayMultiplier, FixedOrder, Product, Employee } from './types';
 
 export interface DailyOrder {
@@ -22,9 +23,6 @@ export interface DailyOrder {
 
 const FR_DAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 export async function saveOrder(
   inventory: InventoryState,
@@ -296,6 +294,51 @@ export async function saveDailyForecast(date: string, burgers: number, employeeI
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ date, burgers_prevus: burgers, employee_id: employeeId }),
   });
+}
+
+// ─── Inventory draft (shared) ────────────────────────────────────────────────
+
+export interface InventoryDraft {
+  id: string;
+  date: string;
+  frites_fraiches: string;
+  frites_blanchies: string;
+  boules_restantes: string;
+  pct_gras: string;
+  buns_restants: string;
+  buns_jeter: string;
+  buns_j2: string;
+  burgers_prevus: string;
+  status: 'draft' | 'validated';
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export async function fetchInventoryDraft(date: string): Promise<InventoryDraft | null> {
+  const res = await fetch(`/api/inventory-draft?date=${encodeURIComponent(date)}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function saveInventoryDraft(
+  inventory: InventoryState,
+  burgersPrevus: string,
+  employeeId?: string
+): Promise<{ error: string | null }> {
+  try {
+    const res = await fetch('/api/inventory-draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employeeId, inventory, burgersPrevus }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return { error: body.error ?? 'Erreur serveur.' };
+    }
+    return { error: null };
+  } catch {
+    return { error: 'Erreur réseau.' };
+  }
 }
 
 // ─── Prep tasks ──────────────────────────────────────────────────────────────

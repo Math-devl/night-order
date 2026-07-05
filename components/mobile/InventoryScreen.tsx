@@ -6,6 +6,7 @@ interface Props {
   inventory: InventoryState;
   onChange: (field: keyof InventoryState, value: string) => void;
   onNext: () => void;
+  saveStatus?: 'idle' | 'saving' | 'saved' | 'error';
   fixedFrites?: boolean;
   fixedViande?: boolean;
   fixedBuns?: boolean;
@@ -75,7 +76,7 @@ function formatDate(): string {
   return `${day} ${dd}/${mm}`;
 }
 
-export default function InventoryScreen({ inventory, onChange, onNext, fixedFrites, fixedViande, fixedBuns }: Props) {
+export default function InventoryScreen({ inventory, onChange, onNext, saveStatus, fixedFrites, fixedViande, fixedBuns }: Props) {
   const requiredFields = [
     !fixedFrites && inventory.fritesFraiches,
     !fixedFrites && inventory.fritesBlanchies,
@@ -91,7 +92,12 @@ export default function InventoryScreen({ inventory, onChange, onNext, fixedFrit
       <div className="sticky top-0 bg-[#FFF0F5] pt-6 pb-3 px-4 z-10">
         <div className="flex items-baseline justify-between">
           <h1 className="text-2xl font-bold text-[#1A1209]">Inventaire du soir</h1>
-          <span className="text-[#FF4D8A] text-sm font-semibold">{formatDate()}</span>
+          <div className="flex items-baseline gap-2">
+            {saveStatus === 'saving' && <span className="text-xs text-[#A0909A]">Enregistrement…</span>}
+            {saveStatus === 'saved' && <span className="text-xs text-[#596643] font-medium">✓ Sauvegardé</span>}
+            {saveStatus === 'error' && <span className="text-xs text-red-500 font-medium">⚠️ Non enregistré</span>}
+            <span className="text-[#FF4D8A] text-sm font-semibold">{formatDate()}</span>
+          </div>
         </div>
         {total > 0 && (
           <div className="mt-2 flex items-center gap-3">
