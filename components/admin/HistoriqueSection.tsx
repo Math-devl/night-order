@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, insertPlannedOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, verifyReception, syncReceptionCommanded, fetchInventoryDraft, upsertInventoryOnly, INVENTORY_COLUMNS, InventoryColumn, DailyOrder, MorningReception, InventoryDraft } from '@/lib/db';
+import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, insertPlannedOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, verifyReception, syncReceptionCommanded, fetchInventoryDraft, saveDailyForecast, upsertInventoryOnly, INVENTORY_COLUMNS, InventoryColumn, DailyOrder, MorningReception, InventoryDraft } from '@/lib/db';
 import { localDateStr, inventaireDateStr, livraisonDateStr } from '@/lib/dates';
 import { notifyDeliveryDiscrepancy } from '@/lib/push';
 import { Supplier, Product } from '@/lib/types';
@@ -1148,10 +1148,8 @@ export default function HistoriqueSection() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    // Brouillon du soir (date de livraison = demain), affiché en lecture seule
-    const t = new Date();
-    t.setDate(t.getDate() + 1);
-    fetchInventoryDraft(localDateStr(t))
+    // Brouillon du soir (J+1 calculé côté serveur), affiché en lecture seule
+    fetchInventoryDraft()
       .then(d => setTodayDraft(d && d.status === 'draft' ? d : null))
       .catch(() => {});
   }, []);
@@ -1176,6 +1174,11 @@ export default function HistoriqueSection() {
         buns_commander: updated.buns_commander,
       });
       if (insertErr) { alert(insertErr); return; }
+      // Source de vérité unique : la prévision saisie ici doit être celle
+      // que le mobile affiche (daily_forecast)
+      if (updated.burgers_prevus != null && updated.burgers_prevus > 0) {
+        await saveDailyForecast(updated.burgers_prevus, undefined, editing.date);
+      }
       setEditing(null);
       load();
       return;
@@ -1186,6 +1189,10 @@ export default function HistoriqueSection() {
       updated.viande_total = Math.round((merged.boeuf + merged.gras) * 1000) / 1000;
     }
     await updateOrder(editing.id, updated);
+    // Prévision modifiée sur une commande à venir → même synchro que le pré-remplissage
+    if (updated.burgers_prevus != null && updated.burgers_prevus > 0 && editing.date >= localDateStr(new Date())) {
+      await saveDailyForecast(updated.burgers_prevus, undefined, editing.date);
+    }
     // Resynchroniser les quantités commandées dans la réception si elle existe
     const reception = receptionsMap[editing.id];
     if (reception) {

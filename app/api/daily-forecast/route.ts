@@ -44,5 +44,26 @@ export async function POST(req: NextRequest) {
     );
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Source de vérité unique : si une commande planifiée (non validée) existe pour
+  // cette date, son burgers_prevus reflète la prévision — l'admin voit le même
+  // chiffre que le mobile. On ne touche JAMAIS une commande validée (brouillon
+  // 'validated') ni les quantités commandées.
+  const { data: order } = await supabaseAdmin
+    .from('daily_orders')
+    .select('id')
+    .eq('date', date)
+    .maybeSingle();
+  if (order) {
+    const { data: draft } = await supabaseAdmin
+      .from('inventory_drafts')
+      .select('status')
+      .eq('date', date)
+      .maybeSingle();
+    if (draft?.status !== 'validated') {
+      await supabaseAdmin.from('daily_orders').update({ burgers_prevus }).eq('id', order.id);
+    }
+  }
+
   return NextResponse.json({ ok: true, date });
 }

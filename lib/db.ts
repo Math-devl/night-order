@@ -320,14 +320,18 @@ export async function hasTodayDeliveryPending(): Promise<boolean> {
 }
 
 export async function hasTodayInventoryBeenDone(): Promise<boolean> {
+  // Critère : brouillon d'inventaire figé ('validated') pour demain.
+  // Seule la validation du soir (save-order) produit cet état — une commande
+  // pré-remplie par l'admin (burgers_prevus > 0 dans daily_orders) ne doit
+  // jamais bloquer la saisie.
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowDate = localDateStr(tomorrow);
   const { data } = await supabase
-    .from('daily_orders')
+    .from('inventory_drafts')
     .select('id')
     .eq('date', tomorrowDate)
-    .gt('burgers_prevus', 0)
+    .eq('status', 'validated')
     .maybeSingle();
   return data !== null;
 }
