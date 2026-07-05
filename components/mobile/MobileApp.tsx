@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { InventoryState, ForecastState, ReceptionState, Screen, AppSettings, CalculatedOrders } from '@/lib/types';
 import { calculate } from '@/lib/calculations';
 import { fetchAppSettings } from '@/lib/settings';
-import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder, verifyEmployee, fetchDailyForecast, saveDailyForecast, fetchInventoryDraft, saveInventoryDraft, InventoryDraft } from '@/lib/db';
+import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder, verifyEmployee, fetchDailyForecast, saveDailyForecast, saveDailyExtra, fetchInventoryDraft, saveInventoryDraft, InventoryDraft } from '@/lib/db';
 import { getSession, setSession as persistSession, clearSession, EmployeeSession } from '@/lib/auth';
 import { registerPushSubscription } from '@/lib/push';
 import BottomNav from './BottomNav';
@@ -40,6 +40,7 @@ export default function MobileApp() {
   const [forecastSaveStatus, setForecastSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const extraSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedBadgeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftSavedBadgeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,6 +87,30 @@ export default function MobileApp() {
     setDraftSaveStatus('idle');
   };
 
+  const flushForecastSave = () => {
+    const burgersPending = saveTimeoutRef.current !== null;
+    const extraPending = extraSaveTimeoutRef.current !== null;
+    if (!burgersPending && !extraPending) return;
+    if (saveTimeoutRef.current) { clearTimeout(saveTimeoutRef.current); saveTimeoutRef.current = null; }
+    if (extraSaveTimeoutRef.current) { clearTimeout(extraSaveTimeoutRef.current); extraSaveTimeoutRef.current = null; }
+    const payload = JSON.stringify({
+      employee_id: sessionRef.current?.id,
+      ...(burgersPending ? { burgers_prevus: parseInt(forecastRef.current.burgersPrevus) || 0 } : {}),
+      ...(extraPending ? { extra_boules_boeuf: parseInt(forecastRef.current.extraBoulesBoeuf) || 0 } : {}),
+    });
+    navigator.sendBeacon('/api/daily-forecast', new Blob([payload], { type: 'application/json' }));
+    setForecastSaveStatus('idle');
+  };
+
+  const flushPendingSaves = () => {
+    flushDraftSave();
+    flushForecastSave();
+  };
+
+  // N'applique QUE l'inventaire : le forecast (burgers + extra) a sa propre
+  // source de vérité (daily_forecast) — la copie burgers_prevus du brouillon
+  // est un instantané de saisie, pas une donnée à afficher (elle perdait la
+  // course d'hydratation contre daily_forecast avec une valeur périmée).
   const applyDraft = (draft: InventoryDraft) => {
     setInventory({
       fritesFraiches: draft.frites_fraiches,
@@ -96,9 +121,6 @@ export default function MobileApp() {
       bunsJeter: draft.buns_jeter,
       bunsJ2: draft.buns_j2,
     });
-    if (draft.burgers_prevus !== '') {
-      setForecast(p => p.burgersPrevus === '' ? { ...p, burgersPrevus: draft.burgers_prevus } : p);
-    }
   };
 
   useEffect(() => {
@@ -179,10 +201,13 @@ export default function MobileApp() {
       }
     }).catch(() => {});
 
-    fetchDailyForecast().then(burgers => {
-      if (burgers !== null && burgers > 0) {
-        setForecast(p => p.burgersPrevus === '' ? { ...p, burgersPrevus: String(burgers) } : p);
-      }
+    fetchDailyForecast().then(f => {
+      if (!f) return;
+      setForecast(p => ({
+        ...p,
+        ...(f.burgers_prevus > 0 && p.burgersPrevus === '' ? { burgersPrevus: String(f.burgers_prevus) } : {}),
+        ...(f.extra_boules_boeuf > 0 && p.extraBoulesBoeuf === '' ? { extraBoulesBoeuf: String(f.extra_boules_boeuf) } : {}),
+      }));
     }).catch(() => {});
 
     fetchInventoryDraft().then(draft => {
@@ -200,13 +225,16 @@ export default function MobileApp() {
     // donc correcte même après minuit sur une PWA restée ouverte).
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        flushDraftSave();
+        flushPendingSaves();
         return;
       }
-      fetchDailyForecast().then(burgers => {
-        if (burgers !== null && burgers > 0) {
-          setForecast(p => ({ ...p, burgersPrevus: String(burgers) }));
-        }
+      fetchDailyForecast().then(f => {
+        if (!f) return;
+        setForecast(p => ({
+          ...p,
+          ...(f.burgers_prevus > 0 ? { burgersPrevus: String(f.burgers_prevus) } : {}),
+          extraBoulesBoeuf: f.extra_boules_boeuf > 0 ? String(f.extra_boules_boeuf) : '',
+        }));
       }).catch(() => {});
       if (!inventoryTouchedRef.current) {
         fetchInventoryDraft().then(draft => {
@@ -215,12 +243,12 @@ export default function MobileApp() {
       }
     };
     document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('pagehide', flushDraftSave);
+    window.addEventListener('pagehide', flushPendingSaves);
 
     return () => {
       navigator.serviceWorker?.removeEventListener('message', onSwMessage);
       document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('pagehide', flushDraftSave);
+      window.removeEventListener('pagehide', flushPendingSaves);
     };
   }, []);
 
@@ -293,6 +321,7 @@ export default function MobileApp() {
                 setForecastSaveStatus('saving');
                 if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                 saveTimeoutRef.current = setTimeout(() => {
+                  saveTimeoutRef.current = null;
                   saveDailyForecast(burgers, session?.id)
                     .then(() => {
                       setForecastSaveStatus('saved');
@@ -304,6 +333,21 @@ export default function MobileApp() {
               } else {
                 setForecastSaveStatus('idle');
               }
+            }
+            if (f === 'extraBoulesBoeuf') {
+              // '' = bouton « 0 » : la remise à zéro doit aussi se propager
+              setForecastSaveStatus('saving');
+              if (extraSaveTimeoutRef.current) clearTimeout(extraSaveTimeoutRef.current);
+              extraSaveTimeoutRef.current = setTimeout(() => {
+                extraSaveTimeoutRef.current = null;
+                saveDailyExtra(parseInt(v) || 0, session?.id)
+                  .then(() => {
+                    setForecastSaveStatus('saved');
+                    if (savedBadgeRef.current) clearTimeout(savedBadgeRef.current);
+                    savedBadgeRef.current = setTimeout(() => setForecastSaveStatus('idle'), 2000);
+                  })
+                  .catch(() => setForecastSaveStatus('idle'));
+              }, 800);
             }
           }}
           saveStatus={forecastSaveStatus}
@@ -336,6 +380,15 @@ export default function MobileApp() {
           onCancelled={(restored) => {
             setInventory(restored.inventory);
             setForecast(restored.forecast);
+            // La source de vérité du forecast (burgers + extra) est daily_forecast,
+            // qui survit à l'annulation — le payload restored ne connaît pas l'extra
+            fetchDailyForecast().then(f => {
+              if (!f) return;
+              setForecast(p => ({
+                burgersPrevus: f.burgers_prevus > 0 ? String(f.burgers_prevus) : p.burgersPrevus,
+                extraBoulesBoeuf: f.extra_boules_boeuf > 0 ? String(f.extra_boules_boeuf) : '',
+              }));
+            }).catch(() => {});
             setLastValidatedOrders(null);
             setLastValidatedForecast(defaultForecast);
             setPreparationDate(null);

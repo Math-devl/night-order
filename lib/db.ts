@@ -338,13 +338,19 @@ export async function hasTodayInventoryBeenDone(): Promise<boolean> {
 
 // ─── Daily forecast (shared draft) ───────────────────────────────────────────
 
+export interface DailyForecastData {
+  burgers_prevus: number;
+  extra_boules_boeuf: number;
+}
+
 // Sans date : la route calcule J+1 côté serveur (immunité au gel de date client).
 // Date explicite : réservé aux écritures admin sur une date choisie (Historique).
-export async function fetchDailyForecast(date?: string): Promise<number | null> {
+export async function fetchDailyForecast(date?: string): Promise<DailyForecastData | null> {
   const res = await fetch(date ? `/api/daily-forecast?date=${encodeURIComponent(date)}` : '/api/daily-forecast');
   if (!res.ok) return null;
   const data = await res.json();
-  return data?.burgers_prevus ?? null;
+  if (!data) return null;
+  return { burgers_prevus: data.burgers_prevus ?? 0, extra_boules_boeuf: data.extra_boules_boeuf ?? 0 };
 }
 
 export async function saveDailyForecast(burgers: number, employeeId?: string, date?: string): Promise<void> {
@@ -352,6 +358,16 @@ export async function saveDailyForecast(burgers: number, employeeId?: string, da
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ burgers_prevus: burgers, employee_id: employeeId, ...(date ? { date } : {}) }),
+  });
+}
+
+// Setter dédié plutôt qu'extension de saveDailyForecast : les deux appels admin
+// (Historique) restent intacts, et le POST fusionne côté serveur de toute façon.
+export async function saveDailyExtra(extraBoules: number, employeeId?: string): Promise<void> {
+  await fetch('/api/daily-forecast', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ extra_boules_boeuf: extraBoules, employee_id: employeeId }),
   });
 }
 
