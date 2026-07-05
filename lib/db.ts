@@ -139,6 +139,59 @@ export async function insertManualOrder(data: {
   return { error: error?.message ?? null };
 }
 
+// Liste blanche des colonnes inventaire de daily_orders — source unique,
+// consommée par l'admin (édition + ajout). Jamais les colonnes commande.
+export const INVENTORY_COLUMNS = [
+  'frites_fraiches',
+  'frites_blanchies',
+  'boules_restantes',
+  'pct_gras',
+  'buns_restants',
+] as const;
+export type InventoryColumn = typeof INVENTORY_COLUMNS[number];
+
+// Ajout admin d'un inventaire « seul » (correction de donnée pure) :
+// ligne existante pour cette date (ex. buns J+2) → update des seules colonnes
+// inventaire ; sinon insert avec toutes les colonnes commande à 0.
+export async function upsertInventoryOnly(
+  dateLivraison: string,
+  fields: Partial<Pick<DailyOrder, InventoryColumn>>
+): Promise<{ error: string | null }> {
+  const inventoryOnly: Partial<Record<InventoryColumn, number>> = {};
+  for (const col of INVENTORY_COLUMNS) {
+    if (fields[col] !== undefined) inventoryOnly[col] = fields[col];
+  }
+  if (Object.keys(inventoryOnly).length === 0) {
+    return { error: 'Aucune valeur saisie.' };
+  }
+
+  const { data: existing, error: readErr } = await supabase
+    .from('daily_orders')
+    .select('id')
+    .eq('date', dateLivraison)
+    .maybeSingle();
+  if (readErr) return { error: readErr.message };
+
+  if (existing) {
+    const { error } = await supabase.from('daily_orders').update(inventoryOnly).eq('id', existing.id);
+    return { error: error?.message ?? null };
+  }
+
+  const d = new Date(dateLivraison + 'T00:00:00');
+  const { error } = await supabase.from('daily_orders').insert({
+    date: dateLivraison,
+    day_name: FR_DAYS[d.getDay()],
+    burgers_prevus: 0,
+    frites_fraiches: 0, frites_blanchies: 0, boules_restantes: 0,
+    pct_gras: 26.5, buns_restants: 0,
+    frites_blanchir: 0, frites_commander: 0, viande_total: 0,
+    boeuf: 0, gras: 0, buns_commander: 0,
+    validated_at: new Date().toISOString(),
+    ...inventoryOnly,
+  });
+  return { error: error?.message ?? null };
+}
+
 export async function fetchLastOrder(): Promise<DailyOrder | null> {
   const { data, error } = await supabase
     .from('daily_orders')

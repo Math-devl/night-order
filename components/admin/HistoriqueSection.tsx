@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef, Fragment } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, insertPlannedOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, verifyReception, syncReceptionCommanded, DailyOrder, MorningReception } from '@/lib/db';
+import { fetchOrders, updateOrder, deleteOrder, insertManualOrder, insertPlannedOrder, fetchSuppliers, fetchReceptions, saveReception, updateReception, verifyReception, syncReceptionCommanded, fetchInventoryDraft, upsertInventoryOnly, INVENTORY_COLUMNS, InventoryColumn, DailyOrder, MorningReception, InventoryDraft } from '@/lib/db';
+import { localDateStr, inventaireDateStr, livraisonDateStr } from '@/lib/dates';
 import { notifyDeliveryDiscrepancy } from '@/lib/push';
 import { Supplier, Product } from '@/lib/types';
 
@@ -34,10 +35,6 @@ type OrderRow = DailyOrder & { isPlaceholder?: boolean };
 
 const FR_DAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 function buildUpcomingPlaceholders(orders: DailyOrder[]): OrderRow[] {
   const existingDates = new Set(orders.map(o => o.date));
   const placeholders: OrderRow[] = [];
@@ -68,6 +65,19 @@ const EDITABLE_FIELDS: { key: EditableField; label: string; unit?: string }[] = 
   { key: 'buns_commander', label: 'Buns commandés' },
 ];
 
+// Colonnes inventaire uniquement — jamais les colonnes commande.
+// La liste des clés vit dans lib/db.ts (INVENTORY_COLUMNS) ; ici on n'ajoute
+// que les libellés d'affichage.
+const INVENTORY_LABELS: Record<InventoryColumn, { label: string; unit?: string }> = {
+  frites_fraiches:  { label: 'Frites fraîches restantes',  unit: 'kg' },
+  frites_blanchies: { label: 'Frites blanchies restantes', unit: 'kg' },
+  boules_restantes: { label: 'Boules restantes' },
+  pct_gras:         { label: '% masse grasse',             unit: '%' },
+  buns_restants:    { label: 'Buns restants' },
+};
+const INVENTORY_FIELDS: { key: InventoryColumn; label: string; unit?: string }[] =
+  INVENTORY_COLUMNS.map(key => ({ key, ...INVENTORY_LABELS[key] }));
+
 function groupByMonth(orders: OrderRow[]): Record<string, OrderRow[]> {
   return orders.reduce((acc, o) => {
     const key = o.date.slice(0, 7);
@@ -85,12 +95,6 @@ function monthLabel(key: string): string {
 
 const fmt1 = (n: number) => n.toFixed(1);
 
-function inventaireDateStr(storedDate: string): string {
-  const d = new Date(storedDate + 'T00:00:00');
-  d.setDate(d.getDate() - 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 function daysInMonthFromKey(monthKey: string): number {
   const [y, m] = monthKey.split('-').map(Number);
   return new Date(y, m, 0).getDate();
@@ -101,6 +105,10 @@ function formatDate(dateStr: string): string {
   const days = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
   return `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+
+const hasInventory = (o: DailyOrder) =>
+  o.buns_restants > 0 || o.boules_restantes > 0 ||
+  parseFloat(String(o.frites_fraiches)) > 0 || parseFloat(String(o.frites_blanchies)) > 0;
 
 async function exportExcel(orders: DailyOrder[], receptionsMap: Record<string, MorningReception>, label: string) {
   // Import dynamique : xlsx-js-style accède à `document` au chargement du module,
@@ -530,6 +538,118 @@ function EditModal({ order, isPlaceholder, onSave, onClose }: { order: DailyOrde
   );
 }
 
+function EditInventoryModal({ order, onSave, onClose }: { order: DailyOrder; onSave: (u: Partial<DailyOrder>) => void; onClose: () => void }) {
+  const [values, setValues] = useState<Partial<DailyOrder>>({});
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#596643] border border-[#6B7A50] rounded-2xl p-6 w-full max-w-md shadow-xl">
+        <h3 className="text-white font-bold text-lg mb-1">Modifier l'inventaire</h3>
+        <p className="text-[#C8D4B0] text-sm mb-4">{formatDate(inventaireDateStr(order.date))} au soir</p>
+
+        <div className="space-y-3 max-h-96 overflow-y-auto">
+          {INVENTORY_FIELDS.map(({ key, label, unit }) => (
+            <div key={key} className="flex items-center justify-between gap-4">
+              <label className="text-[#C8D4B0] text-sm flex-1">{label}</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  defaultValue={order[key] as number}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setValues((v) => {
+                      const next = { ...v };
+                      if (raw === '') delete next[key];
+                      else next[key] = parseFloat(raw);
+                      return next;
+                    });
+                  }}
+                  className="w-24 bg-[#FFF0F5] text-[#1A1209] text-right rounded-lg px-3 py-1.5 border border-[#496035] focus:border-[#FF4D8A] focus:outline-none text-sm"
+                />
+                {unit && <span className="text-[#8BA870] text-xs w-6">{unit}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-[#8BA870] text-xs mt-4 mb-1">
+          ℹ️ Correction de donnée pure : la commande et les livraisons de ce soir-là ne sont pas recalculées.
+        </p>
+
+        <div className="flex gap-3 mt-4">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-[#6B7A50] text-[#C8D4B0] text-sm font-medium hover:bg-[#496035]">
+            Annuler
+          </button>
+          <button onClick={() => onSave(values)} className="flex-1 py-2.5 rounded-xl bg-[#FF4D8A] text-white text-sm font-bold hover:bg-[#E03070]">
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddInventoryModal({ onSave, onClose }: { onSave: (dateLivraison: string, u: Partial<DailyOrder>) => Promise<void>; onClose: () => void }) {
+  const [soirDate, setSoirDate] = useState(localDateStr(new Date()));
+  const [values, setValues] = useState<Partial<DailyOrder>>({});
+  const [saving, setSaving] = useState(false);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#596643] border border-[#6B7A50] rounded-2xl p-6 w-full max-w-md shadow-xl">
+        <h3 className="text-white font-bold text-lg mb-1">Ajouter un inventaire</h3>
+        <p className="text-[#C8D4B0] text-sm mb-4">Soir sans inventaire enregistré (oubli, incident)</p>
+
+        <div className="space-y-3 max-h-96 overflow-y-auto">
+          <div className="flex items-center justify-between gap-4">
+            <label className="text-[#C8D4B0] text-sm flex-1">Date du soir</label>
+            <input type="date" value={soirDate} onChange={e => setSoirDate(e.target.value)}
+              className="w-40 bg-[#FFF0F5] text-[#1A1209] text-right rounded-lg px-3 py-1.5 border border-[#496035] focus:border-[#FF4D8A] focus:outline-none text-sm" />
+          </div>
+          {INVENTORY_FIELDS.map(({ key, label, unit }) => (
+            <div key={key} className="flex items-center justify-between gap-4">
+              <label className="text-[#C8D4B0] text-sm flex-1">{label}</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  placeholder={key === 'pct_gras' ? '26.5' : '—'}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setValues((v) => {
+                      const next = { ...v };
+                      if (raw === '') delete next[key];
+                      else next[key] = parseFloat(raw);
+                      return next;
+                    });
+                  }}
+                  className="w-24 bg-[#FFF0F5] text-[#1A1209] text-right rounded-lg px-3 py-1.5 border border-[#496035] focus:border-[#FF4D8A] focus:outline-none text-sm"
+                />
+                {unit && <span className="text-[#8BA870] text-xs w-6">{unit}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-[#8BA870] text-xs mt-4 mb-1">
+          ℹ️ Correction de donnée pure : la commande et les livraisons de ce soir-là ne sont pas recalculées.
+        </p>
+
+        <div className="flex gap-3 mt-4">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-[#6B7A50] text-[#C8D4B0] text-sm font-medium hover:bg-[#496035]">
+            Annuler
+          </button>
+          <button
+            onClick={async () => { if (!soirDate || saving) return; setSaving(true); await onSave(livraisonDateStr(soirDate), values); setSaving(false); }}
+            disabled={saving}
+            className="flex-1 py-2.5 rounded-xl bg-[#FF4D8A] text-white text-sm font-bold hover:bg-[#E03070] disabled:opacity-50 transition-colors">
+            {saving ? 'Enregistrement…' : '+ Ajouter'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EditReceptionModal({ reception, onSave, onClose }: {
   reception: MorningReception;
   onSave: (values: { frites_recues: number; viande_recue_boeuf: number; viande_recue_gras: number; buns_recus: number }) => void;
@@ -744,74 +864,6 @@ function ReceptionPanel({ r, onEdit, onVerify }: { r: MorningReception; onEdit: 
   );
 }
 
-const hasInventory = (o: DailyOrder) =>
-  o.buns_restants > 0 || o.boules_restantes > 0 ||
-  parseFloat(String(o.frites_fraiches)) > 0 || parseFloat(String(o.frites_blanchies)) > 0;
-
-function InventaireMonthBlock({ monthKey, orders }: { monthKey: string; orders: DailyOrder[] }) {
-  const [open, setOpen] = useState(true);
-  const real = orders.filter(hasInventory);
-
-  return (
-    <div className="mb-4">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-2.5 bg-[#596643] rounded-xl border border-[#6B7A50] hover:bg-[#496035] transition-colors"
-      >
-        <span className="text-[#F5EFA0] font-bold text-sm uppercase tracking-wider">{monthLabel(monthKey)}</span>
-        <div className="flex items-center gap-3">
-          <span className="text-[#8BA870] text-xs">{real.length} soir{real.length > 1 ? 's' : ''}</span>
-          <span className="text-[#8BA870] text-xs">{open ? '▲' : '▼'}</span>
-        </div>
-      </button>
-
-      {open && (
-        <div className="mt-1 overflow-x-auto rounded-xl border border-[#6B7A50]">
-          <table className="w-full min-w-max text-sm">
-            <thead>
-              <tr className="bg-[#496035] text-[#8BA870] text-xs uppercase">
-                <th className="text-left px-4 py-2.5">Date (soir)</th>
-                <th className="text-right px-3 py-2.5">Buns restants</th>
-                <th className="text-right px-3 py-2.5">Frites fraîches</th>
-                <th className="text-right px-3 py-2.5">Frites blanchies</th>
-                <th className="text-right px-3 py-2.5">Boules bœuf</th>
-              </tr>
-            </thead>
-            <tbody>
-              {real.map((o, i) => (
-                <tr key={o.id} className={`border-t border-[#6B7A50] ${i % 2 === 0 ? 'bg-[#596643]' : 'bg-[#4D5A39]'}`}>
-                  <td className="px-4 py-2.5 text-white font-medium whitespace-nowrap">{formatDate(inventaireDateStr(o.date))}</td>
-                  <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">{o.buns_restants}</td>
-                  <td className="px-3 py-2.5 text-right text-white">{fmt1(o.frites_fraiches)} kg</td>
-                  <td className="px-3 py-2.5 text-right text-white">{fmt1(o.frites_blanchies)} kg</td>
-                  <td className="px-3 py-2.5 text-right text-white">{o.boules_restantes}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-[#6B7A50] bg-[#3D4E2B]">
-                <td className="px-4 py-2.5 text-[#F5EFA0] text-xs font-bold uppercase tracking-wider">Moy. {monthLabel(monthKey)}</td>
-                <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">
-                  {real.length ? Math.round(real.reduce((s, o) => s + o.buns_restants, 0) / real.length) : '—'}
-                </td>
-                <td className="px-3 py-2.5 text-right text-white font-bold">
-                  {real.length ? fmt1(real.reduce((s, o) => s + o.frites_fraiches, 0) / real.length) + ' kg' : '—'}
-                </td>
-                <td className="px-3 py-2.5 text-right text-white font-bold">
-                  {real.length ? fmt1(real.reduce((s, o) => s + o.frites_blanchies, 0) / real.length) + ' kg' : '—'}
-                </td>
-                <td className="px-3 py-2.5 text-right text-white font-bold">
-                  {real.length ? Math.round(real.reduce((s, o) => s + o.boules_restantes, 0) / real.length) : '—'}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete, onEditReception, onAddReception, onVerifyReception, onAdd, highlightDate }: {
   monthKey: string;
   orders: OrderRow[];
@@ -965,6 +1017,91 @@ function MonthBlock({ monthKey, orders, prices, receptionsMap, onEdit, onDelete,
   );
 }
 
+function InventaireMonthBlock({ monthKey, orders, onEdit, onAdd }: { monthKey: string; orders: DailyOrder[]; onEdit: (o: DailyOrder) => void; onAdd: () => void }) {
+  const [open, setOpen] = useState(true);
+  const real = orders.filter(hasInventory);
+
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-2.5 bg-[#596643] rounded-xl border border-[#6B7A50] hover:bg-[#496035] transition-colors"
+      >
+        <span className="text-[#F5EFA0] font-bold text-sm uppercase tracking-wider">{monthLabel(monthKey)}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[#8BA870] text-xs">{real.length} soir{real.length > 1 ? 's' : ''}</span>
+          <span className="text-[#8BA870] text-xs">{open ? '▲' : '▼'}</span>
+        </div>
+      </button>
+
+      {open && (
+        <div className="mt-1 overflow-x-auto rounded-xl border border-[#6B7A50]">
+          <table className="w-full min-w-max text-sm">
+            <thead>
+              <tr className="bg-[#496035] text-[#8BA870] text-xs uppercase">
+                <th className="text-left px-4 py-2.5">Date (soir)</th>
+                <th className="text-right px-3 py-2.5">Buns restants</th>
+                <th className="text-right px-3 py-2.5">Frites fraîches</th>
+                <th className="text-right px-3 py-2.5">Frites blanchies</th>
+                <th className="text-right px-3 py-2.5">Boules bœuf</th>
+                <th className="text-right px-3 py-2.5">% gras</th>
+                <th className="px-3 py-2.5 text-right">
+                  <button
+                    onClick={onAdd}
+                    className="bg-[#FF4D8A] hover:bg-[#E03070] text-white text-xs font-bold px-2.5 py-1 rounded-lg transition-colors normal-case tracking-normal"
+                  >
+                    + Ajouter
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {real.map((o, i) => (
+                <tr key={o.id} className={`border-t border-[#6B7A50] ${i % 2 === 0 ? 'bg-[#596643]' : 'bg-[#4D5A39]'} hover:bg-[#496035] transition-colors`}>
+                  <td className="px-4 py-2.5 text-white font-medium whitespace-nowrap">{formatDate(inventaireDateStr(o.date))}</td>
+                  <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">{o.buns_restants}</td>
+                  <td className="px-3 py-2.5 text-right text-white">{fmt1(o.frites_fraiches)} kg</td>
+                  <td className="px-3 py-2.5 text-right text-white">{fmt1(o.frites_blanchies)} kg</td>
+                  <td className="px-3 py-2.5 text-right text-white">{o.boules_restantes}</td>
+                  <td className="px-3 py-2.5 text-right text-[#8BA870]">{fmt1(o.pct_gras)} %</td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex justify-end">
+                      <button onClick={() => onEdit(o)} className="text-[#C8D4B0] hover:text-[#FF4D8A] text-xs px-2 py-1 rounded-lg border border-[#6B7A50] hover:border-[#FF4D8A]/40 transition-colors">
+                        Modifier
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-[#6B7A50] bg-[#3D4E2B]">
+                <td className="px-4 py-2.5 text-[#F5EFA0] text-xs font-bold uppercase tracking-wider">Moy. {monthLabel(monthKey)}</td>
+                <td className="px-3 py-2.5 text-right text-[#FF4D8A] font-bold">
+                  {real.length ? Math.round(real.reduce((s, o) => s + o.buns_restants, 0) / real.length) : '—'}
+                </td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">
+                  {real.length ? fmt1(real.reduce((s, o) => s + o.frites_fraiches, 0) / real.length) + ' kg' : '—'}
+                </td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">
+                  {real.length ? fmt1(real.reduce((s, o) => s + o.frites_blanchies, 0) / real.length) + ' kg' : '—'}
+                </td>
+                <td className="px-3 py-2.5 text-right text-white font-bold">
+                  {real.length ? Math.round(real.reduce((s, o) => s + o.boules_restantes, 0) / real.length) : '—'}
+                </td>
+                <td className="px-3 py-2.5 text-right text-[#8BA870] font-bold">
+                  {real.length ? fmt1(real.reduce((s, o) => s + o.pct_gras, 0) / real.length) + ' %' : '—'}
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function HistoriqueSection() {
   const searchParams = useSearchParams();
   const highlightDate = searchParams.get('date') ?? null;
@@ -976,6 +1113,9 @@ export default function HistoriqueSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<DailyOrder | null>(null);
+  const [editingInventory, setEditingInventory] = useState<DailyOrder | null>(null);
+  const [showAddInventory, setShowAddInventory] = useState(false);
+  const [todayDraft, setTodayDraft] = useState<InventoryDraft | null>(null);
   const [editingReception, setEditingReception] = useState<MorningReception | null>(null);
   const [addingReception, setAddingReception] = useState<DailyOrder | null>(null);
   const [showExport, setShowExport] = useState(false);
@@ -1006,6 +1146,15 @@ export default function HistoriqueSection() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    // Brouillon du soir (date de livraison = demain), affiché en lecture seule
+    const t = new Date();
+    t.setDate(t.getDate() + 1);
+    fetchInventoryDraft(localDateStr(t))
+      .then(d => setTodayDraft(d && d.status === 'draft' ? d : null))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!highlightDate || loading || didScrollRef.current) return;
@@ -1048,6 +1197,36 @@ export default function HistoriqueSection() {
       });
     }
     setEditing(null);
+    load();
+  };
+
+  const handleEditInventory = async (updated: Partial<DailyOrder>) => {
+    if (!editingInventory) return;
+    // Correction de donnée pure : colonnes inventaire uniquement, aucun recalcul
+    // de commande, pas de syncReceptionCommanded, morning_reception intacte.
+    const inventoryOnly: Partial<DailyOrder> = {};
+    for (const { key } of INVENTORY_FIELDS) {
+      if (updated[key] !== undefined) (inventoryOnly as Record<string, number>)[key] = updated[key] as number;
+    }
+    if (Object.keys(inventoryOnly).length > 0) {
+      const { error: updErr } = await updateOrder(editingInventory.id, inventoryOnly);
+      if (updErr) { alert('Erreur lors de la modification : ' + updErr); return; }
+    }
+    setEditingInventory(null);
+    load();
+  };
+
+  const handleAddInventory = async (dateLivraison: string, values: Partial<DailyOrder>) => {
+    // Un inventaire existe déjà pour ce soir → on ouvre l'édition, pas de doublon
+    const existing = orders.find(o => o.date === dateLivraison);
+    if (existing && hasInventory(existing)) {
+      setShowAddInventory(false);
+      setEditingInventory(existing);
+      return;
+    }
+    const { error } = await upsertInventoryOnly(dateLivraison, values);
+    if (error) { alert('Erreur lors de l\'ajout : ' + error); return; }
+    setShowAddInventory(false);
     load();
   };
 
@@ -1145,6 +1324,22 @@ export default function HistoriqueSection() {
       </>)}
 
       {tab === 'inventaire' && (<>
+        {todayDraft && (
+          <div className="mb-4 bg-[#596643] rounded-xl border border-[#FF4D8A]/40 px-4 py-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] bg-[#FF4D8A]/20 text-[#FF4D8A] border border-[#FF4D8A]/40 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">● En cours</span>
+              <span className="text-[#F5EFA0] text-sm font-bold">Inventaire de ce soir</span>
+              <span className="text-[#8BA870] text-xs">brouillon partagé — modifiable depuis /mobile</span>
+            </div>
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
+              <span className="text-[#C8D4B0]">Frites fraîches : <span className="text-white font-bold">{todayDraft.frites_fraiches || '—'}{todayDraft.frites_fraiches ? ' kg' : ''}</span></span>
+              <span className="text-[#C8D4B0]">Frites blanchies : <span className="text-white font-bold">{todayDraft.frites_blanchies || '—'}{todayDraft.frites_blanchies ? ' kg' : ''}</span></span>
+              <span className="text-[#C8D4B0]">Boules : <span className="text-white font-bold">{todayDraft.boules_restantes || '—'}</span></span>
+              <span className="text-[#C8D4B0]">% gras : <span className="text-white font-bold">{todayDraft.pct_gras || '—'}</span></span>
+              <span className="text-[#C8D4B0]">Buns : <span className="text-white font-bold">{todayDraft.buns_restants || '—'}</span></span>
+            </div>
+          </div>
+        )}
         {(() => {
           const invOrders = orders.filter(hasInventory);
           const invGrouped = invOrders.reduce((acc, o) => {
@@ -1161,12 +1356,14 @@ export default function HistoriqueSection() {
             </div>
           );
           return invMonthKeys.map(key => (
-            <InventaireMonthBlock key={key} monthKey={key} orders={invGrouped[key]} />
+            <InventaireMonthBlock key={key} monthKey={key} orders={invGrouped[key]} onEdit={setEditingInventory} onAdd={() => setShowAddInventory(true)} />
           ));
         })()}
       </>)}
 
       {editing && <EditModal order={editing} isPlaceholder={editing.id.startsWith('placeholder-')} onSave={handleEdit} onClose={() => setEditing(null)} />}
+      {editingInventory && <EditInventoryModal order={editingInventory} onSave={handleEditInventory} onClose={() => setEditingInventory(null)} />}
+      {showAddInventory && <AddInventoryModal onSave={handleAddInventory} onClose={() => setShowAddInventory(false)} />}
       {editingReception && <EditReceptionModal reception={editingReception} onSave={handleEditReception} onClose={() => setEditingReception(null)} />}
       {addingReception && <AddReceptionModal order={addingReception} onSave={handleAddReception} onClose={() => setAddingReception(null)} />}
       {showExport && <ExportModal orders={orders} monthKeys={monthKeys} receptionsMap={receptionsMap} onClose={() => setShowExport(false)} />}
