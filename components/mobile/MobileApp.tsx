@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { InventoryState, ForecastState, ReceptionState, Screen, AppSettings, CalculatedOrders } from '@/lib/types';
 import { calculate } from '@/lib/calculations';
 import { fetchAppSettings } from '@/lib/settings';
-import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder, verifyEmployee, fetchDailyForecast, saveDailyForecast, saveDailyExtra, fetchInventoryDraft, saveInventoryDraft, InventoryDraft } from '@/lib/db';
+import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder, verifyEmployee, fetchDailyForecast, saveDailyForecastBoth, fetchInventoryDraft, saveInventoryDraft, InventoryDraft } from '@/lib/db';
 import { getSession, setSession as persistSession, clearSession, EmployeeSession } from '@/lib/auth';
 import { registerPushSubscription } from '@/lib/push';
 import BottomNav from './BottomNav';
@@ -40,7 +40,6 @@ export default function MobileApp() {
   const [forecastSaveStatus, setForecastSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const extraSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedBadgeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftSavedBadgeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -48,6 +47,9 @@ export default function MobileApp() {
   // pas d'hydratation par-dessus une saisie déjà commencée
   const draftHydratedRef = useRef(false);
   const inventoryTouchedRef = useRef(false);
+  // Brouillon figé par la validation : plus aucune écriture draft (débounce ou
+  // flush) ne doit repartir tant que l'annulation ne l'a pas rouvert
+  const draftValidatedRef = useRef(false);
   const inventoryRef = useRef(inventory);
   const forecastRef = useRef(forecast);
   const sessionRef = useRef(session);
@@ -72,10 +74,25 @@ export default function MobileApp() {
     }, 800);
   };
 
+  // Beacon d'abord (survit à la fermeture) ; refus (quota) → fetch keepalive ;
+  // échec des deux → onFailed (le badge ne repasse pas à idle).
+  const beaconWithFallback = (url: string, payload: string, onSettled: () => void, onFailed: () => void) => {
+    if (navigator.sendBeacon(url, new Blob([payload], { type: 'application/json' }))) {
+      onSettled();
+      return;
+    }
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      keepalive: true,
+    }).then(onSettled).catch(onFailed);
+  };
+
   // Écriture en attente + l'app passe en arrière-plan : on n'attend pas le
   // débounce, le beacon survit à la fermeture de l'onglet/PWA.
   const flushDraftSave = () => {
-    if (!draftSaveTimeoutRef.current) return;
+    if (!draftSaveTimeoutRef.current || draftValidatedRef.current) return;
     clearTimeout(draftSaveTimeoutRef.current);
     draftSaveTimeoutRef.current = null;
     const payload = JSON.stringify({
@@ -83,28 +100,49 @@ export default function MobileApp() {
       inventory: inventoryRef.current,
       burgersPrevus: forecastRef.current.burgersPrevus,
     });
-    navigator.sendBeacon('/api/inventory-draft', new Blob([payload], { type: 'application/json' }));
-    setDraftSaveStatus('idle');
+    beaconWithFallback('/api/inventory-draft', payload,
+      () => setDraftSaveStatus('idle'),
+      () => setDraftSaveStatus('error'));
   };
 
   const flushForecastSave = () => {
-    const burgersPending = saveTimeoutRef.current !== null;
-    const extraPending = extraSaveTimeoutRef.current !== null;
-    if (!burgersPending && !extraPending) return;
-    if (saveTimeoutRef.current) { clearTimeout(saveTimeoutRef.current); saveTimeoutRef.current = null; }
-    if (extraSaveTimeoutRef.current) { clearTimeout(extraSaveTimeoutRef.current); extraSaveTimeoutRef.current = null; }
+    if (!saveTimeoutRef.current) return;
+    clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = null;
+    // Même règle que le débounce : état complet, burgers omis si vide/0
+    const burgers = parseInt(forecastRef.current.burgersPrevus) || 0;
     const payload = JSON.stringify({
       employee_id: sessionRef.current?.id,
-      ...(burgersPending ? { burgers_prevus: parseInt(forecastRef.current.burgersPrevus) || 0 } : {}),
-      ...(extraPending ? { extra_boules_boeuf: parseInt(forecastRef.current.extraBoulesBoeuf) || 0 } : {}),
+      ...(burgers > 0 ? { burgers_prevus: burgers } : {}),
+      extra_boules_boeuf: parseInt(forecastRef.current.extraBoulesBoeuf) || 0,
     });
-    navigator.sendBeacon('/api/daily-forecast', new Blob([payload], { type: 'application/json' }));
-    setForecastSaveStatus('idle');
+    beaconWithFallback('/api/daily-forecast', payload,
+      () => setForecastSaveStatus('idle'),
+      () => {});
   };
 
   const flushPendingSaves = () => {
     flushDraftSave();
     flushForecastSave();
+  };
+
+  // Écrivain unique forecast : un seul timer, chaque envoi porte burgers + extra
+  // lus depuis la ref au moment de l'envoi (burgers omis si vide/0)
+  const scheduleForecastSave = () => {
+    setForecastSaveStatus('saving');
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = null;
+      const burgers = parseInt(forecastRef.current.burgersPrevus) || 0;
+      const extra = parseInt(forecastRef.current.extraBoulesBoeuf) || 0;
+      saveDailyForecastBoth(burgers > 0 ? burgers : undefined, extra, sessionRef.current?.id)
+        .then(() => {
+          setForecastSaveStatus('saved');
+          if (savedBadgeRef.current) clearTimeout(savedBadgeRef.current);
+          savedBadgeRef.current = setTimeout(() => setForecastSaveStatus('idle'), 2000);
+        })
+        .catch(() => setForecastSaveStatus('idle'));
+    }, 800);
   };
 
   // N'applique QUE l'inventaire : le forecast (burgers + extra) a sa propre
@@ -178,6 +216,7 @@ export default function MobileApp() {
     }).catch(() => {});
     hasTodayInventoryBeenDone().then(done => {
       setInventoryDone(done);
+      draftValidatedRef.current = done;
     }).catch(() => {});
 
     fetchLastOrder().then(order => {
@@ -252,6 +291,14 @@ export default function MobileApp() {
     };
   }, []);
 
+  // Entrée sur l'écran Valider : on vide le débounce brouillon MAINTENANT
+  // (envoi immédiat) — un timer qui partirait après save-order reposterait
+  // status='draft' par-dessus le 'validated' fraîchement figé.
+  useEffect(() => {
+    if (screen === 'validation') flushDraftSave();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen]);
+
   const orders = useMemo(() => calculate(inventory, forecast, settings), [inventory, forecast, settings]);
 
   const fritesFixed = settings?.frites.fixedOrder.is_active ?? false;
@@ -315,40 +362,8 @@ export default function MobileApp() {
           forecast={forecast}
           onChange={(f, v) => {
             setForecast(p => ({ ...p, [f]: v }));
-            if (f === 'burgersPrevus') {
-              const burgers = parseFloat(v);
-              if (burgers > 0) {
-                setForecastSaveStatus('saving');
-                if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-                saveTimeoutRef.current = setTimeout(() => {
-                  saveTimeoutRef.current = null;
-                  saveDailyForecast(burgers, session?.id)
-                    .then(() => {
-                      setForecastSaveStatus('saved');
-                      if (savedBadgeRef.current) clearTimeout(savedBadgeRef.current);
-                      savedBadgeRef.current = setTimeout(() => setForecastSaveStatus('idle'), 2000);
-                    })
-                    .catch(() => setForecastSaveStatus('idle'));
-                }, 800);
-              } else {
-                setForecastSaveStatus('idle');
-              }
-            }
-            if (f === 'extraBoulesBoeuf') {
-              // '' = bouton « 0 » : la remise à zéro doit aussi se propager
-              setForecastSaveStatus('saving');
-              if (extraSaveTimeoutRef.current) clearTimeout(extraSaveTimeoutRef.current);
-              extraSaveTimeoutRef.current = setTimeout(() => {
-                extraSaveTimeoutRef.current = null;
-                saveDailyExtra(parseInt(v) || 0, session?.id)
-                  .then(() => {
-                    setForecastSaveStatus('saved');
-                    if (savedBadgeRef.current) clearTimeout(savedBadgeRef.current);
-                    savedBadgeRef.current = setTimeout(() => setForecastSaveStatus('idle'), 2000);
-                  })
-                  .catch(() => setForecastSaveStatus('idle'));
-              }, 800);
-            }
+            // '' sur l'extra = bouton « 0 » : la remise à zéro doit aussi se propager
+            scheduleForecastSave();
           }}
           saveStatus={forecastSaveStatus}
           orders={orders}
@@ -367,6 +382,14 @@ export default function MobileApp() {
           isAdmin={session?.is_admin}
           onBack={() => setScreen('prevision')}
           onValidated={() => {
+            // Le brouillon vient d'être figé : purge du débounce en attente et
+            // verrou sur toute écriture draft jusqu'à une éventuelle annulation
+            if (draftSaveTimeoutRef.current) {
+              clearTimeout(draftSaveTimeoutRef.current);
+              draftSaveTimeoutRef.current = null;
+            }
+            draftValidatedRef.current = true;
+            setDraftSaveStatus('idle');
             setLastValidatedOrders(orders);
             setLastValidatedForecast(forecast);
             setInventory(defaultInventory);
@@ -378,6 +401,7 @@ export default function MobileApp() {
             setScreen('preparation');
           }}
           onCancelled={(restored) => {
+            draftValidatedRef.current = false; // le brouillon est rouvert
             setInventory(restored.inventory);
             setForecast(restored.forecast);
             // La source de vérité du forecast (burgers + extra) est daily_forecast,

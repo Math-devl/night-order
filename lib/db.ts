@@ -23,7 +23,6 @@ export interface DailyOrder {
 
 const FR_DAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
 
-
 export async function saveOrder(
   inventory: InventoryState,
   forecast: ForecastState,
@@ -361,13 +360,23 @@ export async function saveDailyForecast(burgers: number, employeeId?: string, da
   });
 }
 
-// Setter dédié plutôt qu'extension de saveDailyForecast : les deux appels admin
-// (Historique) restent intacts, et le POST fusionne côté serveur de toute façon.
-export async function saveDailyExtra(extraBoules: number, employeeId?: string): Promise<void> {
+// Écrivain unique côté mobile : chaque envoi porte l'état forecast COMPLET
+// (burgers + extra) lu au moment de l'envoi — deux débounces séparés créaient
+// une course où la lecture-fusion du second écrasait l'écriture du premier.
+// burgers omis quand absent/0 (la fusion serveur conserve la valeur en place).
+export async function saveDailyForecastBoth(
+  burgers: number | undefined,
+  extraBoules: number,
+  employeeId?: string
+): Promise<void> {
   await fetch('/api/daily-forecast', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ extra_boules_boeuf: extraBoules, employee_id: employeeId }),
+    body: JSON.stringify({
+      ...(burgers !== undefined && burgers > 0 ? { burgers_prevus: burgers } : {}),
+      extra_boules_boeuf: extraBoules,
+      employee_id: employeeId,
+    }),
   });
 }
 
