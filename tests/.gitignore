@@ -1,0 +1,4 @@
+# Fixtures de test générées à l'exécution — contiennent des secrets
+# (codes d'accès employés, jeton de session admin). NE JAMAIS committer.
+emps.json
+admin-session.json
