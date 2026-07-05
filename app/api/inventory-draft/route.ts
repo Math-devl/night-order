@@ -9,8 +9,13 @@ const supabaseAdmin = createClient(
 
 
 export async function GET(req: NextRequest) {
-  const date = req.nextUrl.searchParams.get('date');
-  if (!date) return NextResponse.json({ error: 'date required' }, { status: 400 });
+  // Sans date explicite : J+1 côté serveur, comme le POST
+  let date = req.nextUrl.searchParams.get('date');
+  if (!date) {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    date = localDateStr(d);
+  }
 
   const { data, error } = await supabaseAdmin
     .from('inventory_drafts')

@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { InventoryState, ForecastState, ReceptionState, Screen, AppSettings, CalculatedOrders } from '@/lib/types';
 import { calculate } from '@/lib/calculations';
 import { fetchAppSettings } from '@/lib/settings';
-import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder, verifyEmployee, fetchDailyForecast, saveDailyForecast, fetchInventoryDraft, saveInventoryDraft } from '@/lib/db';
+import { hasTodayInventoryBeenDone, hasTodayDeliveryPending, fetchLastOrder, verifyEmployee, fetchDailyForecast, saveDailyForecast, fetchInventoryDraft, saveInventoryDraft, InventoryDraft } from '@/lib/db';
 import { getSession, setSession as persistSession, clearSession, EmployeeSession } from '@/lib/auth';
 import { registerPushSubscription } from '@/lib/push';
 import BottomNav from './BottomNav';
@@ -59,6 +59,7 @@ export default function MobileApp() {
     setDraftSaveStatus('saving');
     if (draftSaveTimeoutRef.current) clearTimeout(draftSaveTimeoutRef.current);
     draftSaveTimeoutRef.current = setTimeout(async () => {
+      draftSaveTimeoutRef.current = null;
       const { error } = await saveInventoryDraft(inventoryRef.current, forecastRef.current.burgersPrevus, sessionRef.current?.id);
       if (error) {
         setDraftSaveStatus('error');
@@ -70,11 +71,35 @@ export default function MobileApp() {
     }, 800);
   };
 
-  const tomorrowStr = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }, []);
+  // Écriture en attente + l'app passe en arrière-plan : on n'attend pas le
+  // débounce, le beacon survit à la fermeture de l'onglet/PWA.
+  const flushDraftSave = () => {
+    if (!draftSaveTimeoutRef.current) return;
+    clearTimeout(draftSaveTimeoutRef.current);
+    draftSaveTimeoutRef.current = null;
+    const payload = JSON.stringify({
+      employeeId: sessionRef.current?.id,
+      inventory: inventoryRef.current,
+      burgersPrevus: forecastRef.current.burgersPrevus,
+    });
+    navigator.sendBeacon('/api/inventory-draft', new Blob([payload], { type: 'application/json' }));
+    setDraftSaveStatus('idle');
+  };
+
+  const applyDraft = (draft: InventoryDraft) => {
+    setInventory({
+      fritesFraiches: draft.frites_fraiches,
+      fritesBlanchies: draft.frites_blanchies,
+      boulesRestantes: draft.boules_restantes,
+      pctGras: draft.pct_gras !== '' ? draft.pct_gras : '26.5',
+      bunsRestants: draft.buns_restants,
+      bunsJeter: draft.buns_jeter,
+      bunsJ2: draft.buns_j2,
+    });
+    if (draft.burgers_prevus !== '') {
+      setForecast(p => p.burgersPrevus === '' ? { ...p, burgersPrevus: draft.burgers_prevus } : p);
+    }
+  };
 
   useEffect(() => {
     // SW postMessage: app already open when notification clicked
@@ -154,47 +179,48 @@ export default function MobileApp() {
       }
     }).catch(() => {});
 
-    fetchDailyForecast(tomorrowStr).then(burgers => {
+    fetchDailyForecast().then(burgers => {
       if (burgers !== null && burgers > 0) {
         setForecast(p => p.burgersPrevus === '' ? { ...p, burgersPrevus: String(burgers) } : p);
       }
     }).catch(() => {});
 
-    fetchInventoryDraft(tomorrowStr).then(draft => {
+    fetchInventoryDraft().then(draft => {
       draftHydratedRef.current = true;
       if (draft && draft.status === 'draft' && !inventoryTouchedRef.current) {
-        setInventory({
-          fritesFraiches: draft.frites_fraiches,
-          fritesBlanchies: draft.frites_blanchies,
-          boulesRestantes: draft.boules_restantes,
-          pctGras: draft.pct_gras !== '' ? draft.pct_gras : '26.5',
-          bunsRestants: draft.buns_restants,
-          bunsJeter: draft.buns_jeter,
-          bunsJ2: draft.buns_j2,
-        });
-        if (draft.burgers_prevus !== '') {
-          setForecast(p => p.burgersPrevus === '' ? { ...p, burgersPrevus: draft.burgers_prevus } : p);
-        }
+        applyDraft(draft);
       } else if (inventoryTouchedRef.current) {
         // L'utilisateur a saisi avant la fin de l'hydratation : on persiste sa saisie
         scheduleDraftSave();
       }
     }).catch(() => { draftHydratedRef.current = true; });
 
-    const onForecastVisible = () => {
-      if (document.visibilityState === 'visible') {
-        fetchDailyForecast(tomorrowStr).then(burgers => {
-          if (burgers !== null && burgers > 0) {
-            setForecast(p => ({ ...p, burgersPrevus: String(burgers) }));
-          }
+    // Reprise d'app : flush du brouillon en attente au passage en arrière-plan,
+    // resynchronisation forecast + brouillon au retour (clé de date côté serveur,
+    // donc correcte même après minuit sur une PWA restée ouverte).
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        flushDraftSave();
+        return;
+      }
+      fetchDailyForecast().then(burgers => {
+        if (burgers !== null && burgers > 0) {
+          setForecast(p => ({ ...p, burgersPrevus: String(burgers) }));
+        }
+      }).catch(() => {});
+      if (!inventoryTouchedRef.current) {
+        fetchInventoryDraft().then(draft => {
+          if (draft && draft.status === 'draft' && !inventoryTouchedRef.current) applyDraft(draft);
         }).catch(() => {});
       }
     };
-    document.addEventListener('visibilitychange', onForecastVisible);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flushDraftSave);
 
     return () => {
       navigator.serviceWorker?.removeEventListener('message', onSwMessage);
-      document.removeEventListener('visibilitychange', onForecastVisible);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flushDraftSave);
     };
   }, []);
 
@@ -267,7 +293,7 @@ export default function MobileApp() {
                 setForecastSaveStatus('saving');
                 if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
                 saveTimeoutRef.current = setTimeout(() => {
-                  saveDailyForecast(tomorrowStr, burgers, session?.id)
+                  saveDailyForecast(burgers, session?.id)
                     .then(() => {
                       setForecastSaveStatus('saved');
                       if (savedBadgeRef.current) clearTimeout(savedBadgeRef.current);
