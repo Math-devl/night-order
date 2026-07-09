@@ -101,6 +101,28 @@ export function formatDate(dateStr: string): string {
   return `${days[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export const hasInventory = (o: DailyOrder) =>
-  o.buns_restants > 0 || o.boules_restantes > 0 ||
-  parseFloat(String(o.frites_fraiches)) > 0 || parseFloat(String(o.frites_blanchies)) > 0;
+// Une nuit apparaît dans l'onglet Inventaire dès qu'un inventaire y a été
+// SAISI — y compris entièrement à 0 (« tout vendu », saisie légitime). Les
+// colonnes inventaire de daily_orders sont numeric (défaut 0, jamais null) :
+// on ne peut donc pas distinguer « saisi à 0 » de « jamais saisi » par la seule
+// valeur. On s'appuie sur la nature de la ligne :
+//   • une valeur inventaire > 0            → nuit normale ;
+//   • sinon, prévision saisie (burgers > 0) → commande validée (ex. tout vendu) ;
+//   • sinon, aucune quantité commande       → saisie d'inventaire pure (ajout
+//                                             manuel à 0), à afficher.
+// On exclut ainsi les lignes purement logistiques (buns J+2 : bp=0, inv=0,
+// mais buns_commander > 0), qui n'ont jamais eu d'inventaire.
+// Limites : un ajout manuel à 0 posé sur une ligne qui porte déjà une commande
+// buns J+2 reste indistinguable d'une pure ligne logistique ; une commande
+// future pré-remplie (bp>0, inv=0) apparaîtrait comme une nuit à 0.
+export const hasInventory = (o: DailyOrder) => {
+  const n = (v: unknown) => (typeof v === 'number' ? v : parseFloat(String(v ?? '')) || 0);
+  const anyInventory =
+    n(o.frites_fraiches) > 0 || n(o.frites_blanchies) > 0 ||
+    n(o.boules_restantes) > 0 || n(o.buns_restants) > 0;
+  if (anyInventory) return true;
+  const anyCommand =
+    n(o.frites_commander) > 0 || n(o.viande_total) > 0 || n(o.boeuf) > 0 ||
+    n(o.gras) > 0 || n(o.buns_commander) > 0;
+  return n(o.burgers_prevus) > 0 || !anyCommand;
+};
